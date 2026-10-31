@@ -92,12 +92,12 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
                 <span className="text-2xl font-black text-[#061F75]">
                   £{item.pricing.totalPayable.toFixed(2)}
                 </span>
-                <span className="text-[10px] text-slate-500 block">Total for {item.durationDays} days</span>
+                <span className="text-[10px] text-slate-500 block">Total for {item.durationDays || item.pricing?.durationDays || 1} days</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-blue-200/60 text-xs text-slate-600">
-              <span className="font-semibold">{item.durationDays} Days Duration</span>
+              <span className="font-semibold">{item.durationDays || item.pricing?.durationDays || 1} Days Duration</span>
               <span className="text-emerald-700 font-bold flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 Free 24h Cancellation

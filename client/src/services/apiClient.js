@@ -185,9 +185,11 @@ export async function searchParkingLots(params) {
 
     return {
       ...lot,
+      durationDays: diffDays,
       pricing: {
         durationDays: diffDays,
         baseDailyRate,
+        dailyRate: baseDailyRate,
         gateDailyRate,
         gateTotal,
         subtotal,
@@ -241,6 +243,7 @@ export async function createNewBooking(bookingData) {
     vehicleReg: bookingData.vehicleReg || 'N/A',
     dateDetails: bookingData.dateDetails,
     totalCharged,
+    qrToken,
     status: 'confirmed',
     createdAt: new Date().toISOString()
   };

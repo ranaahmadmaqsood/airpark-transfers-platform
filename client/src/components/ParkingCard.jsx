@@ -118,7 +118,7 @@ export default function ParkingCard({ lot, onSelect }) {
                 £{lot.pricing.totalPayable.toFixed(2)}
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                ({lot.durationDays} days)
+                ({lot.durationDays || lot.pricing.durationDays || 1} days)
               </span>
             </div>
             <span className="text-[10px] text-slate-400 block mt-0.5">
@@ -148,7 +148,7 @@ export default function ParkingCard({ lot, onSelect }) {
         {showBreakdown && (
           <div className="mt-2.5 p-3 rounded-xl bg-slate-50 text-[11px] text-slate-700 space-y-1.5 border border-slate-200">
             <div className="flex justify-between">
-              <span>Standard Parking ({lot.durationDays} days @ £{lot.pricing.dailyRate.toFixed(2)}/day):</span>
+              <span>Standard Parking ({lot.durationDays || lot.pricing.durationDays || 1} days @ £{(lot.pricing.baseDailyRate || lot.pricing.dailyRate || 5.50).toFixed(2)}/day):</span>
               <span>£{lot.pricing.subtotal.toFixed(2)}</span>
             </div>
             {lot.pricing.discountAmount > 0 && (
