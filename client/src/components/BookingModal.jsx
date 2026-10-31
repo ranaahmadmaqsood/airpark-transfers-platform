@@ -1,8 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { createNewBooking, getExtraServices } from '../services/apiClient';
-import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle, Sparkles, Plus } from 'lucide-react';
+import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle, Sparkles, Plus, AlertCircle } from 'lucide-react';
 
-export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = '' }) {
+class BookingErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(err) {
+    console.error('Booking modal error:', err);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full text-center space-y-4">
+            <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">Reservation Form Error</h3>
+            <p className="text-xs text-slate-500">There was a temporary problem displaying the checkout dialog.</p>
+            <button
+              onClick={this.props.onClose}
+              className="px-5 py-2 rounded-xl bg-[#061F75] text-white font-bold text-xs"
+            >
+              Close &amp; Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function BookingModalContent({ item, onClose, onBookingSuccess, promoCode = '' }) {
   const [formData, setFormData] = useState({
     customerName: '',
     customerEmail: '',
@@ -52,10 +85,10 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
     });
   };
 
-  const durationDays = item.durationDays || item.pricing?.durationDays || 1;
-  const baseTotal = item.pricing?.totalPayable || 49.95;
+  const durationDays = item?.durationDays || item?.pricing?.durationDays || 1;
+  const baseTotal = parseFloat(item?.pricing?.totalPayable ?? 49.95);
   const selectedExtrasList = Object.values(selectedExtras);
-  const extrasTotal = selectedExtrasList.reduce((sum, e) => sum + (e.price || 0), 0);
+  const extrasTotal = selectedExtrasList.reduce((sum, e) => sum + (parseFloat(e.price) || 0), 0);
   const finalTotalPayable = baseTotal + extrasTotal;
 
   const handleSubmit = async (e) => {
@@ -141,7 +174,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
 
               <div className="text-right">
                 <span className="text-2xl font-black text-[#061F75]">
-                  £{totalPayable.toFixed(2)}
+                  £{finalTotalPayable.toFixed(2)}
                 </span>
                 <span className="text-[10px] text-slate-500 block">Total for {durationDays} days</span>
               </div>
@@ -387,5 +420,13 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BookingModal(props) {
+  return (
+    <BookingErrorBoundary onClose={props.onClose}>
+      <BookingModalContent {...props} />
+    </BookingErrorBoundary>
   );
 }
