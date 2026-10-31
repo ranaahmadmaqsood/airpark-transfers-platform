@@ -6,6 +6,7 @@ import BookingModal from './components/BookingModal';
 import VoucherModal from './components/VoucherModal';
 import AdminPortal from './components/AdminPortal';
 import FaqSection from './components/FaqSection';
+import { searchParkingLots, findBookingByRef } from './services/apiClient';
 import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag } from 'lucide-react';
 
 export default function App() {
@@ -41,10 +42,8 @@ export default function App() {
   const fetchParkingLots = async (params) => {
     setLoadingParking(true);
     try {
-      const query = new URLSearchParams(params).toString();
-      const res = await fetch(`/api/parking/search?${query}`);
-      const data = await res.json();
-      setParkingLots(data.results || []);
+      const results = await searchParkingLots(params);
+      setParkingLots(results || []);
     } catch (err) {
       console.error('Failed to load parking search', err);
     } finally {
@@ -86,11 +85,9 @@ export default function App() {
     setLookupError(null);
     try {
       const ref = lookupRef.trim().toUpperCase();
-      const res = await fetch(`/api/bookings?id=${ref}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Booking reference not found');
+      const booking = await findBookingByRef(ref);
       setLookupOpen(false);
-      setVoucherData(data.booking);
+      setVoucherData(booking);
     } catch (err) {
       setLookupError(err.message);
     }

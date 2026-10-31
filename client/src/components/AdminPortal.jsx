@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus 
+} from '../services/apiClient';
+import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
   XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane
 } from 'lucide-react';
@@ -35,14 +38,12 @@ export default function AdminPortal({ onClose }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lotsRes, bookingsRes] = await Promise.all([
-        fetch('/api/admin/lots'),
-        fetch('/api/admin/bookings')
+      const [lotsData, bookingsData] = await Promise.all([
+        getAdminLots(),
+        getAdminBookings()
       ]);
-      const lotsData = await lotsRes.json();
-      const bookingsData = await bookingsRes.json();
-      setLots(lotsData.lots || []);
-      setBookings(bookingsData.bookings || []);
+      setLots(lotsData || []);
+      setBookings(bookingsData || []);
     } catch (err) {
       console.error('Failed to load admin data', err);
     } finally {
@@ -86,29 +87,9 @@ export default function AdminPortal({ onClose }) {
   const handleSaveLot = async (e) => {
     e.preventDefault();
     try {
-      if (editingLot) {
-        // Update
-        const res = await fetch(`/api/admin/lots?id=${editingLot.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lotFormData)
-        });
-        if (res.ok) {
-          fetchData();
-          setLotModalOpen(false);
-        }
-      } else {
-        // Add
-        const res = await fetch('/api/admin/lots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lotFormData)
-        });
-        if (res.ok) {
-          fetchData();
-          setLotModalOpen(false);
-        }
-      }
+      await saveAdminLot(lotFormData, editingLot ? editingLot.id : null);
+      fetchData();
+      setLotModalOpen(false);
     } catch (err) {
       console.error('Failed to save lot', err);
     }
@@ -118,12 +99,8 @@ export default function AdminPortal({ onClose }) {
   const handleDeleteLot = async (id) => {
     if (!window.confirm('Are you sure you want to delete this parking location?')) return;
     try {
-      const res = await fetch(`/api/admin/lots?id=${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setLots(lots.filter(l => l.id !== id));
-      }
+      await removeAdminLot(id);
+      setLots(lots.filter(l => l.id !== id));
     } catch (err) {
       console.error('Failed to delete lot', err);
     }
@@ -132,14 +109,8 @@ export default function AdminPortal({ onClose }) {
   // Update booking order status
   const handleUpdateStatus = async (bookingId, newStatus) => {
     try {
-      const res = await fetch(`/api/admin/bookings?id=${bookingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-      if (res.ok) {
-        setBookings(bookings.map(b => b.id === bookingId ? { ...b, status: newStatus } : b));
-      }
+      await changeBookingStatus(bookingId, newStatus);
+      setBookings(bookings.map(b => b.id === bookingId ? { ...b, status: newStatus } : b));
     } catch (err) {
       console.error('Failed to update status', err);
     }

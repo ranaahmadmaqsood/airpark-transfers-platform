@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getAirports } from '../services/apiClient';
 import { Plane, Calendar, Clock, Tag, Search, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirport }) {
@@ -11,11 +12,8 @@ export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirpo
   const [parkingType, setParkingType] = useState('all');
 
   useEffect(() => {
-    fetch('/api/airports')
-      .then((res) => res.json())
-      .then((data) => {
-        setAirports(data.airports || []);
-      })
+    getAirports()
+      .then((data) => setAirports(data || []))
       .catch((err) => console.error('Failed to load airports', err));
   }, []);
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createNewBooking } from '../services/apiClient';
 import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin } from 'lucide-react';
 
 export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = 'apd10' }) {
@@ -43,16 +44,8 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
         pricing: item.pricing
       };
 
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to complete booking');
-
-      onBookingSuccess(data.booking);
+      const booking = await createNewBooking(payload);
+      onBookingSuccess(booking);
     } catch (err) {
       setError(err.message);
     } finally {
