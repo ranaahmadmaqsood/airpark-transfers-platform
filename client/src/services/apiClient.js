@@ -253,7 +253,10 @@ export async function searchParkingLots(params) {
 export async function createNewBooking(bookingData) {
   const id = `AP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
   const qrToken = 'QR_' + Math.random().toString(36).substring(2, 10).toUpperCase();
-  const totalCharged = parseFloat(bookingData.pricing?.totalPayable || 49.95);
+  const initialCharges = Array.isArray(bookingData.serviceCharges) ? bookingData.serviceCharges : [];
+  const extrasTotal = initialCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+  const baseTotal = parseFloat(bookingData.pricing?.totalPayable || 49.95);
+  const totalCharged = bookingData.totalCharged ? parseFloat(bookingData.totalCharged) : (baseTotal + extrasTotal);
   const platformSettings = await getPlatformSettings();
   const bookingFee = parseFloat(bookingData.pricing?.bookingFee ?? platformSettings.bookingFee ?? 1.95);
 
@@ -288,7 +291,7 @@ export async function createNewBooking(bookingData) {
     compound_bay: '',
     key_tag_number: '',
     mileage_in: '',
-    service_charges: [],
+    service_charges: initialCharges,
     status_history: initialHistory
   };
 
@@ -311,8 +314,10 @@ export async function createNewBooking(bookingData) {
     compoundBay: '',
     keyTagNumber: '',
     mileageIn: '',
-    serviceCharges: [],
+    serviceCharges: initialCharges,
     statusHistory: initialHistory,
+    operatorNet: parseFloat(bookingData.pricing?.operatorNet || 30.00),
+    commissionEarned: 14.50,
     createdAt: new Date().toISOString()
   };
 
@@ -1008,6 +1013,94 @@ export async function removeAirport(code) {
     return true;
   } catch (e) {
     console.error('Database delete airport error:', e);
+    throw e;
+  }
+}
+
+// --- Extra Add-on Services Management (PostgreSQL) ---
+export async function getExtraServices(onlyActive = true) {
+  try {
+    let query = supabase.from('extra_services').select('*').order('price', { ascending: false });
+    if (onlyActive) {
+      query = query.eq('is_active', true);
+    }
+    const { data, error } = await query;
+    if (!error && data) {
+      return data.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description || '',
+        price: parseFloat(s.price),
+        isActive: s.is_active,
+        category: s.category || 'addon',
+        createdAt: s.created_at
+      }));
+    }
+  } catch (e) {
+    console.error('Failed to load extra services from database', e);
+  }
+
+  // Fallback in-memory defaults
+  const defaults = [
+    { id: 'valet_wash', name: 'Valet Exterior Hand Wash & Wax', description: 'Full exterior hand wash, wheel shine and wax coat before return flight lands.', price: 25.00, isActive: true, category: 'cleaning' },
+    { id: 'ev_charge', name: 'EV Fast Charging (100% Battery)', description: 'Vehicle charged to 100% battery at our compound charging stations.', price: 15.00, isActive: true, category: 'electric' },
+    { id: 'cancel_guarantee', name: 'Flexible Cancellation & Amendment Cover', description: 'Cancel or change booking dates up to 2 hours before arrival with zero fee.', price: 2.95, isActive: true, category: 'protection' },
+    { id: 'sms_priority', name: 'Priority SMS Updates & ANPR Chauffeur Dispatch', description: 'Instant SMS confirmation, live driver tracking & barrier auto-pass notifications.', price: 1.99, isActive: true, category: 'communication' }
+  ];
+  return onlyActive ? defaults.filter(d => d.isActive) : defaults;
+}
+
+export async function saveExtraService(serviceData) {
+  const name = (serviceData.name || '').trim();
+  if (!name) throw new Error('Service name is required');
+
+  const id = serviceData.id || ('srv_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 30));
+  const payload = {
+    id,
+    name,
+    description: (serviceData.description || '').trim(),
+    price: Math.max(0, parseFloat(serviceData.price) || 0),
+    is_active: serviceData.isActive !== false,
+    category: serviceData.category || 'addon'
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('extra_services')
+      .upsert(payload, { onConflict: 'id' })
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database save extra service error:', e);
+    throw e;
+  }
+}
+
+export async function toggleExtraServiceStatus(id, isActive) {
+  try {
+    const { data, error } = await supabase
+      .from('extra_services')
+      .update({ is_active: isActive })
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database toggle extra service error:', e);
+    throw e;
+  }
+}
+
+export async function removeExtraService(id) {
+  try {
+    const { error } = await supabase.from('extra_services').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error('Database delete extra service error:', e);
     throw e;
   }
 }

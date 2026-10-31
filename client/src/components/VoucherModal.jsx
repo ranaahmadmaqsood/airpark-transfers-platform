@@ -59,7 +59,11 @@ export default function VoucherModal({ booking, onClose }) {
 
   const totalCharged = parseFloat(currentBooking.totalCharged || 0);
   const bookingFee = parseFloat(currentBooking.bookingFee || 1.95);
-  const operatorNet = parseFloat(currentBooking.operatorNet || (totalCharged > bookingFee ? totalCharged - bookingFee : 30.00));
+  const extraChargesSum = (Array.isArray(currentBooking.serviceCharges) ? currentBooking.serviceCharges : []).reduce(
+    (sum, sc) => sum + (parseFloat(sc.amount) || 0),
+    0
+  );
+  const baseParkingFare = Math.max(0, totalCharged - bookingFee - extraChargesSum);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -299,7 +303,7 @@ export default function VoucherModal({ booking, onClose }) {
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-1.5">
             <div className="flex justify-between text-slate-600">
               <span>Parking Service ({currentBooking.serviceName}):</span>
-              <span>£{operatorNet.toFixed(2)}</span>
+              <span>£{baseParkingFare.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Booking &amp; Administration Fee:</span>

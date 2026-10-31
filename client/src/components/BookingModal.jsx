@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { createNewBooking } from '../services/apiClient';
-import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createNewBooking, getExtraServices } from '../services/apiClient';
+import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle, Sparkles, Plus } from 'lucide-react';
 
 export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = '' }) {
   const [formData, setFormData] = useState({
@@ -14,10 +14,49 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
     cardCvc: '888',
     notes: ''
   });
+  const [extraServices, setExtraServices] = useState([]);
+  const [selectedExtras, setSelectedExtras] = useState({});
+  const [loadingExtras, setLoadingExtras] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  useEffect(() => {
+    let isMounted = true;
+    getExtraServices(true)
+      .then((data) => {
+        if (isMounted) {
+          setExtraServices(Array.isArray(data) ? data : []);
+          setLoadingExtras(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load extras:', err);
+        if (isMounted) setLoadingExtras(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   if (!item) return null;
+
+  const handleToggleExtra = (extra) => {
+    setSelectedExtras((prev) => {
+      const updated = { ...prev };
+      if (updated[extra.id]) {
+        delete updated[extra.id];
+      } else {
+        updated[extra.id] = extra;
+      }
+      return updated;
+    });
+  };
+
+  const durationDays = item.durationDays || item.pricing?.durationDays || 1;
+  const baseTotal = item.pricing?.totalPayable || 49.95;
+  const selectedExtrasList = Object.values(selectedExtras);
+  const extrasTotal = selectedExtrasList.reduce((sum, e) => sum + (e.price || 0), 0);
+  const finalTotalPayable = baseTotal + extrasTotal;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,6 +69,13 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
     setError(null);
 
     try {
+      const serviceChargesPayload = selectedExtrasList.map((e) => ({
+        id: e.id,
+        description: e.name,
+        amount: e.price,
+        type: 'addon'
+      }));
+
       const payload = {
         serviceName: item.name,
         operatorName: item.operatorName,
@@ -41,10 +87,12 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
         vehicleReg: formData.vehicleReg,
         promoCode: promoCode,
         dateDetails: {
-          durationDays: item.durationDays || item.pricing?.durationDays || 1,
+          durationDays,
           yardLocation: item.yardLocation
         },
-        pricing: item.pricing
+        pricing: item.pricing,
+        serviceCharges: serviceChargesPayload,
+        totalCharged: finalTotalPayable
       };
 
       const booking = await createNewBooking(payload);
@@ -55,9 +103,6 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
       setSubmitting(false);
     }
   };
-
-  const durationDays = item.durationDays || item.pricing?.durationDays || 1;
-  const totalPayable = item.pricing?.totalPayable || 49.95;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -190,6 +235,57 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
               />
             </div>
 
+            {/* Optional Add-on Services (Interactive Checkboxes for Customer Invoice) */}
+            {extraServices.length > 0 && (
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-[#061F75] flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Optional Travel Extras &amp; Yard Services</span>
+                  </span>
+                  <span className="text-[10px] text-amber-900 font-bold bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                    Add to Invoice
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {extraServices.map((extra) => {
+                    const isChecked = !!selectedExtras[extra.id];
+                    return (
+                      <label
+                        key={extra.id}
+                        className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
+                          isChecked
+                            ? 'bg-white border-[#061F75] shadow-sm ring-1 ring-[#061F75]'
+                            : 'bg-white/80 border-amber-200/60 hover:border-amber-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleExtra(extra)}
+                          className="w-4 h-4 mt-0.5 rounded text-[#061F75] focus:ring-[#061F75] cursor-pointer shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-900 truncate">{extra.name}</span>
+                            <span className="text-xs font-black text-[#061F75] font-mono shrink-0">
+                              +£{extra.price.toFixed(2)}
+                            </span>
+                          </div>
+                          {extra.description && (
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                              {extra.description}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Secure Payment Card Details (Pre-filled test card or user input) */}
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
               <div className="flex items-center justify-between">
@@ -254,9 +350,15 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
                 <span>Booking &amp; Security Administration Fee:</span>
                 <span>+£{item.pricing?.bookingFee?.toFixed(2) || '1.95'}</span>
               </div>
+              {selectedExtrasList.map((extra) => (
+                <div key={extra.id} className="flex justify-between text-[#061F75] font-semibold">
+                  <span>+ {extra.name}:</span>
+                  <span className="font-mono">+£{extra.price.toFixed(2)}</span>
+                </div>
+              ))}
               <div className="flex justify-between pt-1 border-t border-slate-200 text-sm font-black text-[#061F75]">
                 <span>Total Due Now:</span>
-                <span>£{totalPayable.toFixed(2)}</span>
+                <span className="font-mono">£{finalTotalPayable.toFixed(2)}</span>
               </div>
             </div>
 
@@ -269,7 +371,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
               >
                 <Lock className="w-4 h-4" />
                 <span>
-                  {submitting ? 'Confirming Reservation & Payment...' : `Authorize & Pay £${totalPayable.toFixed(2)}`}
+                  {submitting ? 'Confirming Reservation & Payment...' : `Authorize & Pay £${finalTotalPayable.toFixed(2)}`}
                 </span>
               </button>
               <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 text-center mt-2.5">

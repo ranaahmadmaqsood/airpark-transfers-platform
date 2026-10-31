@@ -5,7 +5,8 @@ import {
   getCoupons, saveCoupon, removeCoupon, toggleCouponStatus,
   getAllAdminAirports, saveAirport, toggleAirportStatus, removeAirport, dispatchVoucherEmail,
   getPlatformSettings, updatePlatformSettings, addBookingServiceCharge, removeBookingServiceCharge, updateBookingOperations,
-  changeOperatorPassword
+  changeOperatorPassword,
+  getExtraServices, saveExtraService, toggleExtraServiceStatus, removeExtraService
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
@@ -86,6 +87,9 @@ function AdminPortalContent({ onBackToStorefront }) {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [passwordStatus, setPasswordStatus] = useState(null);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [extraServices, setExtraServices] = useState([]);
+  const [newExtraForm, setNewExtraForm] = useState({ name: '', description: '', price: '', isActive: true });
+  const [savingExtra, setSavingExtra] = useState(false);
   const [loading, setLoading] = useState(true);
   const [realtimeActive, setRealtimeActive] = useState(false);
 
@@ -215,17 +219,19 @@ function AdminPortalContent({ onBackToStorefront }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lotsData, bookingsData, couponsData, airportsData, settingsData] = await Promise.all([
+      const [lotsData, bookingsData, couponsData, airportsData, settingsData, extrasData] = await Promise.all([
         getAdminLots(),
         getAdminBookings(),
         getCoupons(),
         getAllAdminAirports(),
-        getPlatformSettings()
+        getPlatformSettings(),
+        getExtraServices(false)
       ]);
       setLots(Array.isArray(lotsData) ? lotsData : []);
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
       setCoupons(Array.isArray(couponsData) ? couponsData : []);
       setAirports(Array.isArray(airportsData) ? airportsData : []);
+      setExtraServices(Array.isArray(extrasData) ? extrasData : []);
       if (settingsData) {
         setPlatformSettings({
           bookingFee: String(settingsData.bookingFee ?? '1.95'),
@@ -432,6 +438,51 @@ function AdminPortalContent({ onBackToStorefront }) {
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } else {
       setPasswordStatus({ success: false, message: res?.error || 'Failed to update password.' });
+    }
+  };
+
+  // Extra Add-on Services Handlers
+  const handleSaveExtraService = async (e) => {
+    e.preventDefault();
+    if (!newExtraForm.name.trim() || !newExtraForm.price) {
+      alert('Please enter service name and price in £.');
+      return;
+    }
+    setSavingExtra(true);
+    try {
+      await saveExtraService({
+        name: newExtraForm.name,
+        description: newExtraForm.description,
+        price: parseFloat(newExtraForm.price) || 0,
+        isActive: newExtraForm.isActive
+      });
+      setNewExtraForm({ name: '', description: '', price: '', isActive: true });
+      const updated = await getExtraServices(false);
+      setExtraServices(updated);
+      alert('Extra service saved to database and live on platform!');
+    } catch (err) {
+      alert('Error saving extra service: ' + err.message);
+    } finally {
+      setSavingExtra(false);
+    }
+  };
+
+  const handleToggleExtraStatus = async (service) => {
+    try {
+      await toggleExtraServiceStatus(service.id, !service.isActive);
+      setExtraServices(prev => prev.map(s => s.id === service.id ? { ...s, isActive: !s.isActive } : s));
+    } catch (err) {
+      alert('Error updating service status: ' + err.message);
+    }
+  };
+
+  const handleDeleteExtraService = async (id, name) => {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    try {
+      await removeExtraService(id);
+      setExtraServices(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      alert('Error deleting service: ' + err.message);
     }
   };
 
@@ -1428,6 +1479,164 @@ function AdminPortalContent({ onBackToStorefront }) {
                       </button>
                     </div>
                   </form>
+                </div>
+
+                {/* Optional Add-on Services & Upsells (Customer Check / Uncheck in Invoice) */}
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm max-w-3xl">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-2xl bg-amber-50 text-amber-600">
+                        <Sparkles className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-black text-[#061F75]">Optional Add-on Services (Storefront Checkout)</h2>
+                        <p className="text-xs text-slate-500">
+                          Add and manage extra services that customers can check or uncheck in their invoice before paying.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                      {extraServices.length} Configured
+                    </span>
+                  </div>
+
+                  {/* Add New Extra Service Form */}
+                  <form onSubmit={handleSaveExtraService} className="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-6 space-y-4">
+                    <div className="flex items-center gap-2 text-xs font-black uppercase text-[#061F75] tracking-wider">
+                      <PlusCircle className="w-4 h-4 text-[#C8102E]" />
+                      <span>Create New Add-on Service Option</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                          Service Title *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Valet Exterior Hand Wash & Wax"
+                          value={newExtraForm.name}
+                          onChange={(e) => setNewExtraForm({ ...newExtraForm, name: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-[#061F75]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                          Price in £ (Customer Charge) *
+                        </label>
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 text-slate-500 font-bold text-xs">£</span>
+                          <input
+                            type="number"
+                            step="0.50"
+                            min="0"
+                            required
+                            placeholder="e.g. 25.00"
+                            value={newExtraForm.price}
+                            onChange={(e) => setNewExtraForm({ ...newExtraForm, price: e.target.value })}
+                            className="w-full pl-7 pr-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold font-mono text-slate-900 outline-none focus:border-[#061F75]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
+                        Customer Description (Shown in Checkout)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Full exterior hand wash, wheel shine and wax coat before return flight lands."
+                        value={newExtraForm.description}
+                        onChange={(e) => setNewExtraForm({ ...newExtraForm, description: e.target.value })}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-[#061F75]"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={newExtraForm.isActive}
+                          onChange={(e) => setNewExtraForm({ ...newExtraForm, isActive: e.target.checked })}
+                          className="w-4 h-4 rounded text-[#061F75] focus:ring-[#061F75]"
+                        />
+                        <span>Enable immediately on Storefront Checkout</span>
+                      </label>
+
+                      <button
+                        type="submit"
+                        disabled={savingExtra}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] text-white font-extrabold text-xs transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{savingExtra ? 'Saving...' : 'Add Extra Service'}</span>
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* List of Configured Add-on Services */}
+                  <div className="space-y-3">
+                    <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider block">
+                      Active Services Available to Customers
+                    </span>
+
+                    {extraServices.length === 0 ? (
+                      <p className="text-xs text-slate-400 py-3">No extra services configured yet.</p>
+                    ) : (
+                      extraServices.map((service) => (
+                        <div
+                          key={service.id}
+                          className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            service.isActive
+                              ? 'bg-white border-slate-200 hover:border-blue-300'
+                              : 'bg-slate-50 border-slate-200/60 opacity-60'
+                          }`}
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-extrabold text-xs text-slate-900">{service.name}</h4>
+                              <span className="text-[11px] font-black px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
+                                +£{service.price.toFixed(2)}
+                              </span>
+                              {!service.isActive && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-200 text-slate-600">
+                                  Disabled
+                                </span>
+                              )}
+                            </div>
+                            {service.description && (
+                              <p className="text-[11px] text-slate-500 max-w-xl">{service.description}</p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleExtraStatus(service)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
+                                service.isActive
+                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                              }`}
+                            >
+                              {service.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteExtraService(service.id, service.name)}
+                              className="p-1.5 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                              title="Delete Service"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
 
                 {/* Operator Password & Database Credentials Management */}
