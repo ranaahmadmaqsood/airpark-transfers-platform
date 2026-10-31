@@ -130,32 +130,67 @@ module.exports = async (req, res) => {
   const resendApiKey = process.env.RESEND_API_KEY;
   if (resendApiKey) {
     try {
-      const resendResponse = await fetch('https://api.resend.com/emails', {
+      const fromAddress = process.env.EMAIL_FROM || 'Airport Parking Deals UK <onboarding@resend.dev>';
+      
+      // Attempt sending to customer
+      let resendResponse = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${resendApiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: process.env.EMAIL_FROM || 'Airport Parking Deals UK <onboarding@resend.dev>',
+          from: fromAddress,
           to: [customerEmail],
-          subject: `🇬🇧 Airport Parking Voucher Confirmed - ${bookingId} (${serviceName})`,
+          subject: `🇬🇧 Official Airport Parking Voucher - ${bookingId} (${serviceName})`,
           html: emailHtml
         })
       });
 
-      const resendData = await resendResponse.json();
+      let resendData = await resendResponse.json();
+
       if (resendResponse.ok) {
-        console.log('✅ Real transactional email dispatched via Resend:', resendData.id);
+        console.log('✅ Real transactional email dispatched via Resend to customer:', resendData.id);
         return res.status(200).json({
           success: true,
           provider: 'resend',
           messageId: resendData.id,
           recipient: customerEmail
         });
-      } else {
-        console.warn('Resend API returned non-200:', resendData);
       }
+
+      // If Resend free tier unverified domain restriction applies, fallback to account owner email
+      if (resendData && resendData.name === 'validation_error') {
+        const fallbackRecipient = 'ahmadmaqsood2022@gmail.com';
+        console.warn(`Resend domain restriction: delivering booking voucher to account email ${fallbackRecipient}`);
+        
+        const fallbackRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from: fromAddress,
+            to: [fallbackRecipient],
+            subject: `🇬🇧 [Customer Booking Voucher] ${bookingId} - ${customerName} (${serviceName})`,
+            html: emailHtml
+          })
+        });
+
+        const fallbackData = await fallbackRes.json();
+        if (fallbackRes.ok) {
+          return res.status(200).json({
+            success: true,
+            provider: 'resend',
+            messageId: fallbackData.id,
+            recipient: fallbackRecipient,
+            notice: 'Delivered to verified owner email (ahmadmaqsood2022@gmail.com). Verify your domain at resend.com/domains to send directly to public customer inboxes.'
+          });
+        }
+      }
+
+      console.warn('Resend API returned error:', resendData);
     } catch (err) {
       console.error('Failed to dispatch via Resend:', err);
     }
