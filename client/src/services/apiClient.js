@@ -171,8 +171,29 @@ export async function searchParkingLots(params) {
   }
 
   let discountPct = 0;
-  if (promoCode === 'apd10' || promoCode === 'deals10') discountPct = 0.10;
-  else if (promoCode === 'wlcme' || promoCode === 'welcome15') discountPct = 0.15;
+  const cleanPromo = (promoCode || '').trim().toUpperCase();
+  if (cleanPromo) {
+    try {
+      const { data: couponData } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', cleanPromo)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (couponData && diffDays >= (couponData.min_days || 1)) {
+        discountPct = (parseFloat(couponData.discount_percentage) || 10) / 100;
+      } else if (!couponData) {
+        if (cleanPromo === 'APD10' || cleanPromo === 'DEALS10') discountPct = 0.10;
+        else if (cleanPromo === 'WLCME' || cleanPromo === 'WELCOME15') discountPct = 0.15;
+        else if (cleanPromo === 'DEALS20' || cleanPromo === 'SAVE20') discountPct = 0.20;
+      }
+    } catch (e) {
+      if (cleanPromo === 'APD10' || cleanPromo === 'DEALS10') discountPct = 0.10;
+      else if (cleanPromo === 'WLCME' || cleanPromo === 'WELCOME15') discountPct = 0.15;
+      else if (cleanPromo === 'DEALS20' || cleanPromo === 'SAVE20') discountPct = 0.20;
+    }
+  }
 
   return lots.map(lot => {
     const baseDailyRate = parseFloat(lot.baseDailyRate) || 5.50;
@@ -545,4 +566,89 @@ export async function updateBookingDetails(bookingId, updates) {
   const updatedBooking = await findBookingByRef(cleanId);
   dispatchVoucherEmail(updatedBooking);
   return updatedBooking;
+}
+
+// --- Live Coupon Management Endpoints ---
+export async function getCoupons() {
+  try {
+    const { data, error } = await supabase
+      .from('coupons')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      return data.map(c => ({
+        code: c.code,
+        discountPercentage: parseFloat(c.discount_percentage),
+        description: c.description || '',
+        isActive: c.is_active,
+        minDays: c.min_days || 1,
+        createdAt: c.created_at
+      }));
+    }
+  } catch (e) {
+    console.error('Failed to load coupons from database', e);
+  }
+
+  // Fallback defaults if offline
+  return [
+    { code: 'APD10', discountPercentage: 10, description: 'Official 10% Platform Launch Voucher', isActive: true, minDays: 1 },
+    { code: 'WLCME', discountPercentage: 15, description: 'Welcome 15% New Passenger Discount', isActive: true, minDays: 3 },
+    { code: 'DEALS20', discountPercentage: 20, description: '20% Summer Long Stay Special', isActive: true, minDays: 7 }
+  ];
+}
+
+export async function saveCoupon(couponData) {
+  const code = (couponData.code || '').trim().toUpperCase();
+  if (!code) throw new Error('Coupon code is required');
+
+  const payload = {
+    code,
+    discount_percentage: parseFloat(couponData.discountPercentage) || 10.00,
+    description: couponData.description || 'Special Promotion',
+    is_active: couponData.isActive !== false,
+    min_days: parseInt(couponData.minDays, 10) || 1
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('coupons')
+      .upsert(payload, { onConflict: 'code' })
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database coupon save error:', e);
+    throw e;
+  }
+}
+
+export async function removeCoupon(code) {
+  const cleanCode = (code || '').trim().toUpperCase();
+  try {
+    const { error } = await supabase.from('coupons').delete().eq('code', cleanCode);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error('Database coupon delete error:', e);
+    throw e;
+  }
+}
+
+export async function toggleCouponStatus(code, isActive) {
+  const cleanCode = (code || '').trim().toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('coupons')
+      .update({ is_active: isActive })
+      .eq('code', cleanCode)
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database coupon toggle error:', e);
+    throw e;
+  }
 }

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, Component } from 'react';
 import { 
   getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus,
-  authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots
+  authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots,
+  getCoupons, saveCoupon, removeCoupon, toggleCouponStatus
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
-  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut, Zap
+  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut, Zap, Tag, Download, Filter, Search, TrendingUp, Check, Percent
 } from 'lucide-react';
 
 // Error Boundary to prevent any blank screen crashes
@@ -70,11 +71,18 @@ function AdminPortalContent({ onBackToStorefront }) {
   const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Portal tabs & data
-  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders'
+  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'coupons'
   const [lots, setLots] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [realtimeActive, setRealtimeActive] = useState(false);
+
+  // Filters
+  const [lotAirportFilter, setLotAirportFilter] = useState('ALL');
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const [orderAirportFilter, setOrderAirportFilter] = useState('ALL');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
 
   // Modal states for Location Add / Edit
   const [lotModalOpen, setLotModalOpen] = useState(false);
@@ -92,6 +100,17 @@ function AdminPortalContent({ onBackToStorefront }) {
   });
   const [savingLot, setSavingLot] = useState(false);
 
+  // Modal states for Coupon Add
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
+  const [couponFormData, setCouponFormData] = useState({
+    code: '',
+    discountPercentage: '10',
+    description: '',
+    minDays: '1',
+    isActive: true
+  });
+  const [savingCoupon, setSavingCoupon] = useState(false);
+
   // Selected customer profile view
   const [selectedCustomerOrder, setSelectedCustomerOrder] = useState(null);
 
@@ -100,7 +119,7 @@ function AdminPortalContent({ onBackToStorefront }) {
       fetchData();
 
       // Subscribe to real-time PostgreSQL updates
-      const unsubscribe = subscribeToParkingLots((payload) => {
+      const unsubscribe = subscribeToParkingLots(() => {
         setRealtimeActive(true);
         fetchData();
       });
@@ -152,12 +171,14 @@ function AdminPortalContent({ onBackToStorefront }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lotsData, bookingsData] = await Promise.all([
+      const [lotsData, bookingsData, couponsData] = await Promise.all([
         getAdminLots(),
-        getAdminBookings()
+        getAdminBookings(),
+        getCoupons()
       ]);
       setLots(Array.isArray(lotsData) ? lotsData : []);
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
+      setCoupons(Array.isArray(couponsData) ? couponsData : []);
       setRealtimeActive(true);
     } catch (err) {
       console.error('Failed to load admin data', err);
@@ -235,13 +256,110 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
+  // Save new Coupon in real-time
+  const handleSaveCoupon = async (e) => {
+    e.preventDefault();
+    setSavingCoupon(true);
+    try {
+      await saveCoupon(couponFormData);
+      await fetchData();
+      setCouponModalOpen(false);
+      setCouponFormData({ code: '', discountPercentage: '10', description: '', minDays: '1', isActive: true });
+    } catch (err) {
+      alert('Error saving coupon: ' + err.message);
+    } finally {
+      setSavingCoupon(false);
+    }
+  };
+
+  // Toggle Coupon Active / Disabled
+  const handleToggleCoupon = async (code, currentStatus) => {
+    try {
+      await toggleCouponStatus(code, !currentStatus);
+      setCoupons(prev => prev.map(c => c.code === code ? { ...c, isActive: !currentStatus } : c));
+    } catch (err) {
+      alert('Error toggling coupon: ' + err.message);
+    }
+  };
+
+  // Delete Coupon in real-time
+  const handleDeleteCoupon = async (code) => {
+    if (!window.confirm(`Are you sure you want to delete coupon code "${code}"?`)) return;
+    try {
+      await removeCoupon(code);
+      setCoupons(prev => prev.filter(c => c.code !== code));
+    } catch (err) {
+      alert('Error deleting coupon: ' + err.message);
+    }
+  };
+
+  // Export Bookings ANPR Manifest to CSV
+  const handleExportCSV = () => {
+    if (safeBookings.length === 0) {
+      alert('No booking records to export.');
+      return;
+    }
+
+    const headers = ['Booking Ref', 'Customer Name', 'Email', 'Phone', 'ANPR Vehicle Plate', 'Flight Number', 'Airport', 'Service Package', 'Total Paid (£)', 'Status', 'Date Booked'];
+    const rows = safeBookings.map(b => [
+      `"${b.id}"`,
+      `"${(b.customerName || '').replace(/"/g, '""')}"`,
+      `"${b.customerEmail || ''}"`,
+      `"${b.customerPhone || ''}"`,
+      `"${b.vehicleReg || 'N/A'}"`,
+      `"${b.flightNumber || 'None'}"`,
+      `"${b.airport}"`,
+      `"${(b.serviceName || '').replace(/"/g, '""')}"`,
+      `"${parseFloat(b.totalCharged || 0).toFixed(2)}"`,
+      `"${b.status || 'confirmed'}"`,
+      `"${b.createdAt || ''}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `ANPR_Manifest_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const safeLots = Array.isArray(lots) ? lots : [];
   const safeBookings = Array.isArray(bookings) ? bookings : [];
+  const safeCoupons = Array.isArray(coupons) ? coupons : [];
 
   const formatPrice = (val) => {
     const num = parseFloat(val);
     return isNaN(num) ? '0.00' : num.toFixed(2);
   };
+
+  // Financial KPI calculations
+  const totalGrossRevenue = safeBookings.reduce((sum, b) => sum + (parseFloat(b.totalCharged) || 0), 0);
+  const platformCommissionEarned = totalGrossRevenue * 0.28;
+  const netOperatorPayable = totalGrossRevenue - platformCommissionEarned;
+  const activeBookingsCount = safeBookings.filter(b => b.status === 'confirmed').length;
+
+  // Filtered Lots
+  const filteredLots = safeLots.filter(l => {
+    if (lotAirportFilter === 'ALL') return true;
+    return (l.airportCode || '').toUpperCase() === lotAirportFilter;
+  });
+
+  // Filtered Bookings
+  const filteredBookings = safeBookings.filter(b => {
+    const query = orderSearchQuery.toLowerCase();
+    const matchesQuery = !query || 
+      (b.id || '').toLowerCase().includes(query) ||
+      (b.customerName || '').toLowerCase().includes(query) ||
+      (b.customerEmail || '').toLowerCase().includes(query) ||
+      (b.vehicleReg || '').toLowerCase().includes(query);
+
+    const matchesAirport = orderAirportFilter === 'ALL' || (b.airport || '').toUpperCase() === orderAirportFilter;
+    const matchesStatus = orderStatusFilter === 'ALL' || (b.status || 'confirmed') === orderStatusFilter;
+
+    return matchesQuery && matchesAirport && matchesStatus;
+  });
 
   // IF NOT AUTHENTICATED: SHOW SECURE OPERATOR LOGIN GATE
   if (!operatorUser) {
@@ -385,7 +503,7 @@ function AdminPortalContent({ onBackToStorefront }) {
               )}
             </div>
             <h1 className="text-base sm:text-xl font-black">
-              Live Compound Yards, Rates &amp; Bookings Manager
+              Airport Parking Deals UK • Control Center
             </h1>
           </div>
         </div>
@@ -418,34 +536,88 @@ function AdminPortalContent({ onBackToStorefront }) {
       </header>
 
       {/* Tab Navigation Strip */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center gap-3 shadow-sm">
-        <button
-          onClick={() => setActiveTab('lots')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
-            activeTab === 'lots'
-              ? 'bg-[#061F75] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <MapPin className="w-4 h-4 text-amber-400" />
-          <span>Compound Yards &amp; Live Rates ({safeLots.length})</span>
-        </button>
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setActiveTab('lots')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+              activeTab === 'lots'
+                ? 'bg-[#061F75] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <MapPin className="w-4 h-4 text-amber-400" />
+            <span>Compound Yards &amp; Rates ({safeLots.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
-            activeTab === 'orders'
-              ? 'bg-[#061F75] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Users className="w-4 h-4 text-amber-400" />
-          <span>Customer Bookings &amp; ANPR Plates ({safeBookings.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+              activeTab === 'orders'
+                ? 'bg-[#061F75] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Users className="w-4 h-4 text-amber-400" />
+            <span>Customer Bookings &amp; ANPR ({safeBookings.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('coupons')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+              activeTab === 'coupons'
+                ? 'bg-[#061F75] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Tag className="w-4 h-4 text-amber-400" />
+            <span>Coupons &amp; Promo Codes ({safeCoupons.length})</span>
+          </button>
+        </div>
+
+        {activeTab === 'orders' && (
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-300 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 text-[#061F75]" />
+            <span>Export ANPR Manifest (CSV)</span>
+          </button>
+        )}
       </div>
 
       {/* Main Content Body */}
       <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
+        {/* KPI Strip */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Gross Booking Volume</span>
+            <div className="text-2xl font-black text-[#061F75]">£{formatPrice(totalGrossRevenue)}</div>
+            <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+              <TrendingUp className="w-3 h-3" />
+              Total Customer Prepayments
+            </span>
+          </div>
+
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Platform Commission (28%)</span>
+            <div className="text-2xl font-black text-emerald-700">£{formatPrice(platformCommissionEarned)}</div>
+            <span className="text-[10px] text-slate-400 block mt-1">Net Platform Revenue</span>
+          </div>
+
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Operator Yard Pool</span>
+            <div className="text-2xl font-black text-slate-900">£{formatPrice(netOperatorPayable)}</div>
+            <span className="text-[10px] text-slate-400 block mt-1">Forecourt Operator Payout</span>
+          </div>
+
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Active Vehicles in Compounds</span>
+            <div className="text-2xl font-black text-[#C8102E]">{activeBookingsCount}</div>
+            <span className="text-[10px] text-slate-400 block mt-1">ANPR Verified Bookings</span>
+          </div>
+        </div>
+
         {loading ? (
           <div className="py-24 text-center text-slate-500 flex items-center justify-center gap-3 bg-white rounded-3xl border border-slate-200 shadow-sm">
             <RefreshCw className="w-6 h-6 animate-spin text-[#061F75]" />
@@ -472,6 +644,24 @@ function AdminPortalContent({ onBackToStorefront }) {
                   </button>
                 </div>
 
+                {/* Airport Quick Filter Strip */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold text-slate-600">
+                  <span className="text-[11px] text-slate-400 uppercase tracking-wider mr-1">Airport:</span>
+                  {['ALL', 'LHR', 'LGW', 'MAN', 'STN', 'LTN', 'BHX', 'BRS', 'LPL', 'SOU'].map((ap) => (
+                    <button
+                      key={ap}
+                      onClick={() => setLotAirportFilter(ap)}
+                      className={`px-3 py-1.5 rounded-xl cursor-pointer transition-colors ${
+                        lotAirportFilter === ap
+                          ? 'bg-[#061F75] text-white'
+                          : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      {ap}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
@@ -486,14 +676,14 @@ function AdminPortalContent({ onBackToStorefront }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {safeLots.length === 0 ? (
+                        {filteredLots.length === 0 ? (
                           <tr>
                             <td colSpan="6" className="py-12 text-center text-slate-400">
-                              No compound yards found in database. Click &quot;+ Add New Compound Yard&quot; above to add one.
+                              No compound yards found for filter &quot;{lotAirportFilter}&quot;.
                             </td>
                           </tr>
                         ) : (
-                          safeLots.map((l) => (
+                          filteredLots.map((l) => (
                             <tr key={l.id} className="hover:bg-blue-50/40 transition-colors">
                               <td className="py-4 px-5">
                                 <span className="bg-blue-100 text-[#061F75] px-2.5 py-1 rounded-lg font-mono font-black text-xs">
@@ -553,16 +743,46 @@ function AdminPortalContent({ onBackToStorefront }) {
             {/* TAB 2: BOOKINGS & ORDERS */}
             {activeTab === 'orders' && (
               <div className="space-y-4">
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-black text-[#061F75]">Live Customer Reservations &amp; ANPR Plates</h2>
-                    <p className="text-xs text-slate-500">
-                      Monitor incoming vehicles, flight numbers, and manage confirmed order lifecycle.
-                    </p>
+                {/* Search & Filter Bar */}
+                <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                  <div className="relative flex-1 min-w-[220px]">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      placeholder="Search by customer, vehicle reg, or booking reference..."
+                      value={orderSearchQuery}
+                      onChange={(e) => setOrderSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-[#061F75] focus:bg-white"
+                    />
                   </div>
-                  <span className="bg-blue-50 text-[#061F75] font-black text-xs px-3 py-1.5 rounded-xl border border-blue-200">
-                    {safeBookings.length} Bookings Logged
-                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={orderAirportFilter}
+                      onChange={(e) => setOrderAirportFilter(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none"
+                    >
+                      <option value="ALL">All Airports</option>
+                      <option value="LHR">Heathrow (LHR)</option>
+                      <option value="LGW">Gatwick (LGW)</option>
+                      <option value="MAN">Manchester (MAN)</option>
+                      <option value="STN">Stansted (STN)</option>
+                      <option value="LTN">Luton (LTN)</option>
+                      <option value="BHX">Birmingham (BHX)</option>
+                      <option value="BRS">Bristol (BRS)</option>
+                    </select>
+
+                    <select
+                      value={orderStatusFilter}
+                      onChange={(e) => setOrderStatusFilter(e.target.value)}
+                      className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -580,14 +800,14 @@ function AdminPortalContent({ onBackToStorefront }) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {safeBookings.length === 0 ? (
+                        {filteredBookings.length === 0 ? (
                           <tr>
                             <td colSpan="7" className="py-12 text-center text-slate-400">
-                              No customer reservations recorded yet.
+                              No customer reservations match your search or filter.
                             </td>
                           </tr>
                         ) : (
-                          safeBookings.map((b) => (
+                          filteredBookings.map((b) => (
                             <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
                               <td className="py-4 px-5 font-mono font-bold text-[#061F75]">
                                 {b.id}
@@ -633,6 +853,94 @@ function AdminPortalContent({ onBackToStorefront }) {
                                   title="View Complete Customer Dossier"
                                 >
                                   <Eye className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: COUPONS & DISCOUNT CODES */}
+            {activeTab === 'coupons' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                  <div>
+                    <h2 className="text-lg font-black text-[#061F75]">Promotional Coupon Codes</h2>
+                    <p className="text-xs text-slate-500">
+                      Create, toggle, and remove discount codes. Codes apply instantly on customer checkout quotes in real time.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCouponModalOpen(true)}
+                    className="px-5 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-extrabold transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Create New Coupon</span>
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-4 px-5">Promo Code</th>
+                          <th className="py-4 px-5">Discount Rate</th>
+                          <th className="py-4 px-5">Min Parking Days</th>
+                          <th className="py-4 px-5">Campaign Description</th>
+                          <th className="py-4 px-5">Status</th>
+                          <th className="py-4 px-5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {safeCoupons.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="py-12 text-center text-slate-400">
+                              No promo codes configured. Click &quot;+ Create New Coupon&quot; above to create one.
+                            </td>
+                          </tr>
+                        ) : (
+                          safeCoupons.map((c) => (
+                            <tr key={c.code} className="hover:bg-blue-50/40 transition-colors">
+                              <td className="py-4 px-5">
+                                <span className="bg-blue-100 text-[#061F75] px-3 py-1.5 rounded-lg font-mono font-black text-xs border border-blue-200">
+                                  {c.code}
+                                </span>
+                              </td>
+                              <td className="py-4 px-5 font-black text-[#C8102E] text-sm">
+                                {c.discountPercentage}% OFF
+                              </td>
+                              <td className="py-4 px-5 text-slate-700 font-bold">
+                                {c.minDays} {c.minDays === 1 ? 'day' : 'days'}
+                              </td>
+                              <td className="py-4 px-5 text-slate-600">
+                                {c.description || 'General Promotional Discount'}
+                              </td>
+                              <td className="py-4 px-5">
+                                <button
+                                  onClick={() => handleToggleCoupon(c.code, c.isActive)}
+                                  className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-colors ${
+                                    c.isActive
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                      : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                                  }`}
+                                  title="Click to toggle active status"
+                                >
+                                  {c.isActive ? '● Active' : '○ Disabled'}
+                                </button>
+                              </td>
+                              <td className="py-4 px-5 text-right">
+                                <button
+                                  onClick={() => handleDeleteCoupon(c.code)}
+                                  className="p-2 rounded-xl bg-red-50 text-[#C8102E] hover:bg-red-100 transition-colors cursor-pointer"
+                                  title="Delete Promo Code"
+                                >
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               </td>
                             </tr>
@@ -772,6 +1080,98 @@ function AdminPortalContent({ onBackToStorefront }) {
                   className="w-1/2 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
                   {savingLot ? 'Saving to Database...' : editingLot ? 'Commit Changes' : 'Create Live Location'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CREATE NEW PROMO COUPON */}
+      {couponModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-5">
+              <div>
+                <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
+                  PROMOTION ENGINE
+                </span>
+                <h3 className="text-lg font-black text-[#061F75]">Create New Promo Code</h3>
+              </div>
+              <button
+                onClick={() => setCouponModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCoupon} className="space-y-4 text-xs font-bold text-slate-700">
+              <div>
+                <label className="block mb-1">Coupon Code *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. SUMMER25"
+                  value={couponFormData.code}
+                  onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-black uppercase outline-none focus:border-[#061F75]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-1">Discount Percentage (%) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="90"
+                    required
+                    placeholder="e.g. 15"
+                    value={couponFormData.discountPercentage}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, discountPercentage: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Min Duration (Days)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    placeholder="e.g. 3"
+                    value={couponFormData.minDays}
+                    onChange={(e) => setCouponFormData({ ...couponFormData, minDays: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1">Campaign Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Bank Holiday 15% Special Discount"
+                  value={couponFormData.description}
+                  onChange={(e) => setCouponFormData({ ...couponFormData, description: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                />
+              </div>
+
+              <div className="pt-3 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCouponModalOpen(false)}
+                  className="w-1/2 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingCoupon}
+                  className="w-1/2 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {savingCoupon ? 'Deploying...' : 'Deploy Coupon'}
                 </button>
               </div>
             </form>
