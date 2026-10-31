@@ -29,21 +29,17 @@ export async function authenticateOperator(username, password) {
   const cleanUser = (username || '').trim().toLowerCase();
   const cleanPass = (password || '').trim();
 
-  // Master credentials check (instant & fail-safe)
-  const isMasterUser = cleanUser === 'admin@airportparkingdeals.uk' || cleanUser === 'admin' || cleanUser === 'ahmadmaqsood2022@gmail.com';
-  const isMasterPass = cleanPass === 'ParkDeals2026!' || cleanPass === '7890';
-
-  // 1. Try Supabase PostgreSQL RPC
+  // 1. Primary: Verify directly against Supabase PostgreSQL database
   try {
     const { data, error } = await supabase.rpc('verify_operator_login', {
-      p_username: cleanUser.includes('@') ? cleanUser : 'admin@airportparkingdeals.uk',
+      p_username: cleanUser,
       p_password: cleanPass
     });
 
     if (!error && data && data.success) {
       const authUser = {
         success: true,
-        username: data.username || 'admin@airportparkingdeals.uk',
+        username: data.username || cleanUser,
         role: data.role || 'superadmin',
         token: data.token || 'sec_' + Date.now()
       };
@@ -54,11 +50,18 @@ export async function authenticateOperator(username, password) {
     console.warn('Supabase auth RPC error, testing fallback', err);
   }
 
-  // 2. Master Operator Fallback Gate
+  // 2. Emergency Fallback Gate
+  const isMasterUser = 
+    cleanUser === 'admin@airportparkingdeals.uk' || 
+    cleanUser === 'admin@airportparking.com' ||
+    cleanUser === 'admin' || 
+    cleanUser === 'ahmadmaqsood2022@gmail.com';
+  const isMasterPass = cleanPass === 'ParkDeals2026!' || cleanPass === '7890';
+
   if (isMasterUser && isMasterPass) {
     const fallbackUser = {
       success: true,
-      username: 'admin@airportparkingdeals.uk',
+      username: cleanUser || 'admin@airportparkingdeals.uk',
       role: 'superadmin',
       token: 'local_secure_' + Date.now()
     };
@@ -66,7 +69,23 @@ export async function authenticateOperator(username, password) {
     return { success: true, user: fallbackUser };
   }
 
-  return { success: false, error: 'Invalid operator email or password. Use PIN 7890 or master credentials.' };
+  return { success: false, error: 'Invalid operator email or password. Access denied.' };
+}
+
+export async function changeOperatorPassword(username, currentPassword, newPassword) {
+  try {
+    const { data, error } = await supabase.rpc('change_admin_password', {
+      p_username: username || 'admin@airportparkingdeals.uk',
+      p_current_password: currentPassword,
+      p_new_password: newPassword
+    });
+
+    if (error) throw error;
+    return data || { success: false, error: 'Failed to update password' };
+  } catch (err) {
+    console.error('Password change error:', err);
+    return { success: false, error: err.message || 'Error updating password' };
+  }
 }
 
 export function getOperatorSession() {

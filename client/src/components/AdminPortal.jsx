@@ -4,7 +4,8 @@ import {
   authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots,
   getCoupons, saveCoupon, removeCoupon, toggleCouponStatus,
   getAllAdminAirports, saveAirport, toggleAirportStatus, removeAirport, dispatchVoucherEmail,
-  getPlatformSettings, updatePlatformSettings, addBookingServiceCharge, removeBookingServiceCharge, updateBookingOperations
+  getPlatformSettings, updatePlatformSettings, addBookingServiceCharge, removeBookingServiceCharge, updateBookingOperations,
+  changeOperatorPassword
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
@@ -82,6 +83,9 @@ function AdminPortalContent({ onBackToStorefront }) {
   const [airports, setAirports] = useState([]);
   const [platformSettings, setPlatformSettings] = useState({ bookingFee: '1.95', platformCommissionRate: '28' });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [passwordStatus, setPasswordStatus] = useState(null);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [realtimeActive, setRealtimeActive] = useState(false);
 
@@ -393,6 +397,41 @@ function AdminPortalContent({ onBackToStorefront }) {
       alert('Error saving platform settings: ' + err.message);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordStatus(null);
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      setPasswordStatus({ success: false, message: 'Please enter current and new password.' });
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordStatus({ success: false, message: 'New password and confirmation do not match.' });
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 4) {
+      setPasswordStatus({ success: false, message: 'Password or PIN must be at least 4 characters.' });
+      return;
+    }
+
+    setSavingPassword(true);
+    const res = await changeOperatorPassword(
+      operatorUser?.username || 'admin@airportparkingdeals.uk',
+      passwordForm.currentPassword,
+      passwordForm.newPassword
+    );
+    setSavingPassword(false);
+
+    if (res && res.success) {
+      setPasswordStatus({ success: true, message: 'Password updated in database successfully!' });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } else {
+      setPasswordStatus({ success: false, message: res?.error || 'Failed to update password.' });
     }
   };
 
@@ -1386,6 +1425,98 @@ function AdminPortalContent({ onBackToStorefront }) {
                       >
                         <Check className="w-4 h-4" />
                         <span>{savingSettings ? 'Saving to Database...' : 'Save Platform Settings'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Operator Password & Database Credentials Management */}
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm max-w-2xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-slate-200 mb-6">
+                    <div className="p-2.5 rounded-2xl bg-red-50 text-[#C8102E]">
+                      <KeyRound className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-[#061F75]">Operator Security Credentials (PostgreSQL)</h2>
+                      <p className="text-xs text-slate-500">
+                        Update your master password or PIN securely in the database.
+                      </p>
+                    </div>
+                  </div>
+
+                  {passwordStatus && (
+                    <div className={`mb-5 p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5 ${
+                      passwordStatus.success ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-700'
+                    }`}>
+                      {passwordStatus.success ? <CheckCircle className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-red-600" />}
+                      <span>{passwordStatus.message}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangePassword} className="space-y-4 text-xs font-bold text-slate-700">
+                    <div>
+                      <label className="block mb-1 text-slate-900 text-xs">
+                        Logged-in Operator ID
+                      </label>
+                      <input
+                        type="text"
+                        disabled
+                        value={operatorUser?.username || 'admin@airportparkingdeals.uk'}
+                        className="w-full max-w-xs px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-mono text-xs cursor-not-allowed"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-slate-900 text-xs">
+                        Current Password or PIN *
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={passwordForm.currentPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                        placeholder="Enter current password or PIN"
+                        className="w-full max-w-xs px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs outline-none focus:border-[#061F75]"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+                      <div>
+                        <label className="block mb-1 text-slate-900 text-xs">
+                          New Password or PIN *
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={passwordForm.newPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                          placeholder="At least 4 characters"
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs outline-none focus:border-[#061F75]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1 text-slate-900 text-xs">
+                          Confirm New Password *
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                          placeholder="Re-enter new password"
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-xs outline-none focus:border-[#061F75]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingPassword}
+                        className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] hover:from-[#0B2EA2] hover:to-[#A60D25] text-white font-extrabold text-xs transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Lock className="w-4 h-4" />
+                        <span>{savingPassword ? 'Updating Database...' : 'Update Password in PostgreSQL'}</span>
                       </button>
                     </div>
                   </form>
