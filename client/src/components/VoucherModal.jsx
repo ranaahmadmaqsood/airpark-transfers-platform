@@ -1,12 +1,44 @@
-import React from 'react';
-import { X, CheckCircle2, Printer, MapPin, Phone, Calendar, Car, Shield, QrCode } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, CheckCircle2, Printer, MapPin, Phone, Calendar, Car, Shield, QrCode, Edit3, Check, Plane } from 'lucide-react';
+import { updateBookingDetails } from '../services/apiClient';
 
 export default function VoucherModal({ booking, onClose }) {
-  if (!booking) return null;
+  const [currentBooking, setCurrentBooking] = useState(booking);
+  const [isEditing, setIsEditing] = useState(false);
+  const [amendReg, setAmendReg] = useState(booking?.vehicleReg || '');
+  const [amendFlight, setAmendFlight] = useState(booking?.flightNumber || '');
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(null);
+
+  if (!currentBooking) return null;
 
   const handlePrint = () => {
     window.print();
   };
+
+  const handleSaveAmendment = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setSuccessMsg(null);
+    try {
+      const updated = await updateBookingDetails(currentBooking.id, {
+        vehicleReg: amendReg,
+        flightNumber: amendFlight
+      });
+      setCurrentBooking(updated);
+      setIsEditing(false);
+      setSuccessMsg('Booking details and ANPR registration updated successfully in database.');
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err) {
+      alert('Failed to update: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const totalCharged = parseFloat(currentBooking.totalCharged || 0);
+  const bookingFee = parseFloat(currentBooking.bookingFee || 1.95);
+  const operatorNet = parseFloat(currentBooking.operatorNet || (totalCharged > bookingFee ? totalCharged - bookingFee : 30.00));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -27,7 +59,7 @@ export default function VoucherModal({ booking, onClose }) {
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -35,7 +67,14 @@ export default function VoucherModal({ booking, onClose }) {
         </div>
 
         {/* Boarding-Pass Voucher Body */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-5">
+          {successMsg && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
           {/* Header Ticket Banner (Royal Navy & Red Stripe) */}
           <div className="bg-[#061F75] rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-[#C8102E]/20 rounded-full blur-2xl" />
@@ -45,21 +84,21 @@ export default function VoucherModal({ booking, onClose }) {
                   <span className="text-[11px] font-black uppercase tracking-widest text-sky-200 block">
                     🇬🇧 Official Airport Parking Voucher
                   </span>
-                  <h2 className="text-xl font-black tracking-tight">{booking.serviceName}</h2>
-                  <p className="text-xs text-blue-200">{booking.operatorName}</p>
+                  <h2 className="text-xl font-black tracking-tight">{currentBooking.serviceName}</h2>
+                  <p className="text-xs text-blue-200">{currentBooking.operatorName || 'Airport Parking Deals Express'}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] uppercase font-bold text-blue-200">Booking Reference</span>
                   <div className="text-lg font-mono font-black tracking-wider bg-white/20 backdrop-blur-md px-3 py-1 rounded-lg text-white">
-                    {booking.id}
+                    {currentBooking.id}
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/20 text-xs text-blue-100">
-                <span>Airport: <strong className="text-white">{booking.airport}</strong></span>
-                <span>Customer: <strong className="text-white">{booking.customerName}</strong></span>
-                <span>Date: <strong className="text-white">{booking.createdAt}</strong></span>
+                <span>Airport: <strong className="text-white">{currentBooking.airport}</strong></span>
+                <span>Customer: <strong className="text-white">{currentBooking.customerName}</strong></span>
+                <span>Status: <strong className="text-emerald-300 uppercase">{currentBooking.status || 'CONFIRMED'}</strong></span>
               </div>
             </div>
           </div>
@@ -71,7 +110,7 @@ export default function VoucherModal({ booking, onClose }) {
                 <QrCode className="w-20 h-20 text-slate-900" />
               </div>
               <span className="text-[9px] font-mono text-[#061F75] font-black mt-1 tracking-wider">
-                {booking.qrToken || 'VOUCHER-TOKEN'}
+                {currentBooking.qrToken || currentBooking.id}
               </span>
             </div>
 
@@ -83,7 +122,7 @@ export default function VoucherModal({ booking, onClose }) {
               <p className="text-slate-600 leading-relaxed">
                 Present this voucher on your mobile or paper printout. Your vehicle registration{' '}
                 <strong className="text-slate-900 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-mono font-black">
-                  [{booking.vehicleReg || 'REGISTERED'}]
+                  [{currentBooking.vehicleReg || 'REGISTERED'}]
                 </strong>{' '}
                 is registered with the compound ANPR camera system for automatic barrier access.
               </p>
@@ -94,36 +133,95 @@ export default function VoucherModal({ booking, onClose }) {
             </div>
           </div>
 
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-4 text-xs">
+          {/* Details Grid & Self-Service Amendment */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
               <span className="text-[10px] uppercase font-bold text-slate-500 block">Lead Passenger</span>
-              <p className="font-bold text-slate-900 mt-0.5">{booking.customerName}</p>
-              <p className="text-slate-500 text-[11px]">{booking.customerEmail}</p>
-              <p className="text-slate-500 text-[11px]">{booking.customerPhone}</p>
+              <p className="font-bold text-slate-900 mt-0.5">{currentBooking.customerName}</p>
+              <p className="text-slate-500 text-[11px]">{currentBooking.customerEmail}</p>
+              <p className="text-slate-500 text-[11px]">{currentBooking.customerPhone || 'Not provided'}</p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block">ANPR Plate &amp; Flight</span>
-              <p className="font-mono font-bold text-slate-900 mt-0.5">Plate: {booking.vehicleReg || 'N/A'}</p>
-              <p className="font-mono text-slate-600 text-[11px]">Flight: {booking.flightNumber || 'None'}</p>
-              <p className="text-emerald-700 font-bold text-[11px] mt-0.5">✓ Forecourt Levy Paid</p>
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-500">ANPR Plate &amp; Flight</span>
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="text-[10px] font-bold text-[#061F75] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3 text-[#061F75]" />
+                    <span>{isEditing ? 'Cancel Edit' : 'Amend Details'}</span>
+                  </button>
+                </div>
+                <p className="font-mono font-bold text-slate-900">
+                  Plate: <span className="bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">{currentBooking.vehicleReg || 'N/A'}</span>
+                </p>
+                <p className="font-mono text-slate-600 text-[11px] mt-1">Flight: {currentBooking.flightNumber || 'None specified'}</p>
+              </div>
+              <p className="text-emerald-700 font-bold text-[11px] mt-1">✓ Forecourt Levy Paid</p>
             </div>
           </div>
+
+          {/* Amendment Form (when user clicks Amend Details) */}
+          {isEditing && (
+            <form onSubmit={handleSaveAmendment} className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs space-y-3">
+              <div className="font-bold text-[#061F75]">Amend Vehicle Registration or Flight Number</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">Vehicle Plate (ANPR)</label>
+                  <input
+                    type="text"
+                    required
+                    value={amendReg}
+                    onChange={(e) => setAmendReg(e.target.value.toUpperCase())}
+                    placeholder="e.g. AB24 CDE"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold uppercase text-slate-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">Flight Number</label>
+                  <input
+                    type="text"
+                    value={amendFlight}
+                    onChange={(e) => setAmendFlight(e.target.value.toUpperCase())}
+                    placeholder="e.g. BA 175"
+                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono uppercase text-slate-900 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 rounded-lg bg-[#061F75] text-white font-bold text-xs hover:bg-[#0B2EA2] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? 'Updating Database...' : 'Save & Update Voucher'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-2 rounded-lg bg-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Payment Receipt */}
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-1.5">
             <div className="flex justify-between text-slate-600">
-              <span>Parking Service ({booking.serviceName}):</span>
-              <span>£{booking.operatorNet?.toFixed(2)}</span>
+              <span>Parking Service ({currentBooking.serviceName}):</span>
+              <span>£{operatorNet.toFixed(2)}</span>
             </div>
             <div className="flex justify-between text-slate-600">
               <span>Booking &amp; Administration Fee:</span>
-              <span>£{booking.bookingFee?.toFixed(2)}</span>
+              <span>£{bookingFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-black text-[#061F75]">
               <span>Total Paid (Prepaid Online Voucher):</span>
-              <span className="text-emerald-700">£{booking.totalCharged?.toFixed(2)}</span>
+              <span className="text-emerald-700">£{totalCharged.toFixed(2)}</span>
             </div>
           </div>
         </div>

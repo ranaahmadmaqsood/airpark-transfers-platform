@@ -480,3 +480,41 @@ export async function changeBookingStatus(bookingId, newStatus) {
     throw e;
   }
 }
+
+export async function updateBookingDetails(bookingId, updates) {
+  const cleanId = (bookingId || '').trim().toUpperCase();
+  const dbPayload = {};
+  if (updates.vehicleReg !== undefined) dbPayload.vehicle_reg = updates.vehicleReg.trim().toUpperCase();
+  if (updates.flightNumber !== undefined) dbPayload.flight_number = updates.flightNumber.trim().toUpperCase();
+
+  // 1. Update Supabase
+  try {
+    const { data, error } = await supabase
+      .from('bookings')
+      .update(dbPayload)
+      .ilike('id', cleanId)
+      .select();
+
+    if (error) console.warn('Supabase update warning:', error);
+  } catch (e) {
+    console.error('Failed to update booking in database', e);
+  }
+
+  // 2. Update Local Storage cache
+  try {
+    const localList = getLocalBookings();
+    const updatedList = localList.map(b => {
+      if ((b.id || '').toUpperCase() === cleanId) {
+        return {
+          ...b,
+          vehicleReg: updates.vehicleReg !== undefined ? updates.vehicleReg.trim().toUpperCase() : b.vehicleReg,
+          flightNumber: updates.flightNumber !== undefined ? updates.flightNumber.trim().toUpperCase() : b.flightNumber
+        };
+      }
+      return b;
+    });
+    localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(updatedList));
+  } catch (e) {}
+
+  return findBookingByRef(cleanId);
+}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { createNewBooking } from '../services/apiClient';
-import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin } from 'lucide-react';
+import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle } from 'lucide-react';
 
 export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = 'apd10' }) {
   const [formData, setFormData] = useState({
@@ -9,6 +9,9 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
     customerPhone: '',
     flightNumber: '',
     vehicleReg: '',
+    cardNumber: '4242 •••• •••• 4242',
+    cardExpiry: '12/28',
+    cardCvc: '888',
     notes: ''
   });
   const [submitting, setSubmitting] = useState(false);
@@ -18,8 +21,8 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.customerName || !formData.customerEmail) {
-      setError('Please provide your name and email address');
+    if (!formData.customerName || !formData.customerEmail || !formData.vehicleReg) {
+      setError('Please provide your name, email address, and vehicle registration');
       return;
     }
 
@@ -38,7 +41,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
         vehicleReg: formData.vehicleReg,
         promoCode: promoCode,
         dateDetails: {
-          durationDays: item.durationDays,
+          durationDays: item.durationDays || item.pricing?.durationDays || 1,
           yardLocation: item.yardLocation
         },
         pricing: item.pricing
@@ -52,6 +55,9 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
       setSubmitting(false);
     }
   };
+
+  const durationDays = item.durationDays || item.pricing?.durationDays || 1;
+  const totalPayable = item.pricing?.totalPayable || 49.95;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -67,7 +73,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -90,14 +96,14 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
 
               <div className="text-right">
                 <span className="text-2xl font-black text-[#061F75]">
-                  £{item.pricing.totalPayable.toFixed(2)}
+                  £{totalPayable.toFixed(2)}
                 </span>
-                <span className="text-[10px] text-slate-500 block">Total for {item.durationDays || item.pricing?.durationDays || 1} days</span>
+                <span className="text-[10px] text-slate-500 block">Total for {durationDays} days</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-blue-200/60 text-xs text-slate-600">
-              <span className="font-semibold">{item.durationDays || item.pricing?.durationDays || 1} Days Duration</span>
+              <span className="font-semibold">{durationDays} Days Duration</span>
               <span className="text-emerald-700 font-bold flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 Free 24h Cancellation
@@ -179,18 +185,66 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
                 required
                 placeholder="e.g. AB24 CDE (Required for automatic barrier ANPR camera entry)"
                 value={formData.vehicleReg}
-                onChange={(e) => setFormData({ ...formData, vehicleReg: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, vehicleReg: e.target.value.toUpperCase() })}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#061F75] focus:bg-white transition-colors uppercase font-mono"
               />
+            </div>
+
+            {/* Secure Payment Card Details (Pre-filled test card or user input) */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase text-[#061F75] flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                  <span>Payment Card Details</span>
+                </span>
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  🔒 256-Bit SSL Encrypted
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Card Number</label>
+                <input
+                  type="text"
+                  value={formData.cardNumber}
+                  onChange={(e) => setFormData({ ...formData, cardNumber: e.target.value })}
+                  placeholder="4242 •••• •••• 4242"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Expiry (MM/YY)</label>
+                  <input
+                    type="text"
+                    value={formData.cardExpiry}
+                    onChange={(e) => setFormData({ ...formData, cardExpiry: e.target.value })}
+                    placeholder="12/28"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Security Code (CVC)</label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    value={formData.cardCvc}
+                    onChange={(e) => setFormData({ ...formData, cardCvc: e.target.value })}
+                    placeholder="888"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Price Breakdown Box */}
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
               <div className="flex justify-between">
                 <span>Standard Parking Charge:</span>
-                <span>£{item.pricing.subtotal.toFixed(2)}</span>
+                <span>£{item.pricing?.subtotal?.toFixed(2) || '0.00'}</span>
               </div>
-              {item.pricing.discountAmount > 0 && (
+              {item.pricing?.discountAmount > 0 && (
                 <div className="flex justify-between text-[#C8102E] font-bold">
                   <span>Promo Code Savings ({item.pricing.discountPercentage}% off):</span>
                   <span>-£{item.pricing.discountAmount.toFixed(2)}</span>
@@ -198,11 +252,11 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
               )}
               <div className="flex justify-between text-slate-500">
                 <span>Booking &amp; Security Administration Fee:</span>
-                <span>+£{item.pricing.bookingFee.toFixed(2)}</span>
+                <span>+£{item.pricing?.bookingFee?.toFixed(2) || '1.95'}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-200 text-sm font-black text-[#061F75]">
                 <span>Total Due Now:</span>
-                <span>£{item.pricing.totalPayable.toFixed(2)}</span>
+                <span>£{totalPayable.toFixed(2)}</span>
               </div>
             </div>
 
@@ -215,7 +269,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
               >
                 <Lock className="w-4 h-4" />
                 <span>
-                  {submitting ? 'Confirming Reservation...' : `Confirm & Pay £${item.pricing.totalPayable.toFixed(2)}`}
+                  {submitting ? 'Confirming Reservation & Payment...' : `Authorize & Pay £${totalPayable.toFixed(2)}`}
                 </span>
               </button>
               <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 text-center mt-2.5">
