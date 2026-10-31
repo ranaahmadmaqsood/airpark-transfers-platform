@@ -158,7 +158,19 @@ app.post('/api/bookings', (req, res) => {
   });
 });
 
-// 5. Retrieve Booking by ID or QR Token
+// 5. Retrieve Booking by ID or QR Token (supports both /api/bookings?id=... and /api/bookings/:id)
+app.get('/api/bookings', (req, res) => {
+  const { id } = req.query;
+  if (!id) {
+    return res.json({ bookings: revenueLedger.bookings });
+  }
+  const booking = revenueLedger.findBooking(id);
+  if (!booking) {
+    return res.status(404).json({ error: 'Booking voucher not found' });
+  }
+  res.json({ booking });
+});
+
 app.get('/api/bookings/:id', (req, res) => {
   const booking = revenueLedger.findBooking(req.params.id);
   if (!booking) {

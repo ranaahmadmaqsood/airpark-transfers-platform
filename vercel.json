@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build:client",
+  "outputDirectory": "client/dist",
+  "routes": [
+    {
+      "src": "/api/airports",
+      "dest": "/api/airports.js"
+    },
+    {
+      "src": "/api/parking/search",
+      "dest": "/api/parking/search.js"
+    },
+    {
+      "src": "/api/transfers/quote",
+      "dest": "/api/transfers/quote.js"
+    },
+    {
+      "src": "/api/bookings",
+      "dest": "/api/bookings.js"
+    },
+    {
+      "src": "/api/admin/metrics",
+      "dest": "/api/admin/metrics.js"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

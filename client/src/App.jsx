@@ -74,7 +74,8 @@ export default function App() {
     if (!lookupRef.trim()) return;
     setLookupError(null);
     try {
-      const res = await fetch(`/api/bookings/${lookupRef.trim().toUpperCase()}`);
+      const ref = lookupRef.trim().toUpperCase();
+      const res = await fetch(`/api/bookings?id=${ref}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Voucher not found');
       setLookupOpen(false);
