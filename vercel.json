@@ -20,6 +20,10 @@
       "dest": "/api/bookings.js"
     },
     {
+      "src": "/api/send-voucher",
+      "dest": "/api/send-voucher.js"
+    },
+    {
       "src": "/api/admin/lots/(.*)",
       "dest": "/api/admin/lots.js?id=$1"
     },

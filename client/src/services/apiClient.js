@@ -263,7 +263,33 @@ export async function createNewBooking(bookingData) {
     console.error('Database booking insert error', e);
   }
 
+  // 3. Dispatch transactional email voucher immediately (non-blocking)
+  dispatchVoucherEmail(clientNormalizedBooking);
+
   return clientNormalizedBooking;
+}
+
+export async function dispatchVoucherEmail(booking) {
+  if (!booking || !booking.customerEmail) return { success: false, error: 'No recipient email' };
+
+  try {
+    const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+    const endpoint = isGitHubPages 
+      ? 'https://airpark-transfers-platform.vercel.app/api/send-voucher' 
+      : '/api/send-voucher';
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking })
+    });
+    const result = await res.json();
+    console.log('📨 Transactional email dispatch outcome:', result);
+    return result;
+  } catch (err) {
+    console.warn('Transactional email dispatch non-blocking notice:', err);
+    return { success: false, error: err.message };
+  }
 }
 
 export async function findBookingByRef(ref) {
@@ -516,5 +542,7 @@ export async function updateBookingDetails(bookingId, updates) {
     localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(updatedList));
   } catch (e) {}
 
-  return findBookingByRef(cleanId);
+  const updatedBooking = await findBookingByRef(cleanId);
+  dispatchVoucherEmail(updatedBooking);
+  return updatedBooking;
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, Printer, MapPin, Phone, Calendar, Car, Shield, QrCode, Edit3, Check, Plane } from 'lucide-react';
-import { updateBookingDetails } from '../services/apiClient';
+import { X, CheckCircle2, Printer, MapPin, Phone, Calendar, Car, Shield, QrCode, Edit3, Check, Plane, Mail } from 'lucide-react';
+import { updateBookingDetails, dispatchVoucherEmail } from '../services/apiClient';
 
 export default function VoucherModal({ booking, onClose }) {
   const [currentBooking, setCurrentBooking] = useState(booking);
@@ -8,12 +8,27 @@ export default function VoucherModal({ booking, onClose }) {
   const [amendReg, setAmendReg] = useState(booking?.vehicleReg || '');
   const [amendFlight, setAmendFlight] = useState(booking?.flightNumber || '');
   const [saving, setSaving] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [successMsg, setSuccessMsg] = useState(null);
 
   if (!currentBooking) return null;
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleResendEmail = async () => {
+    setSendingEmail(true);
+    setSuccessMsg(null);
+    try {
+      const res = await dispatchVoucherEmail(currentBooking);
+      setSuccessMsg(`Voucher email dispatched to ${currentBooking.customerEmail}`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (e) {
+      alert('Could not dispatch email: ' + e.message);
+    } finally {
+      setSendingEmail(false);
+    }
   };
 
   const handleSaveAmendment = async (e) => {
@@ -50,6 +65,15 @@ export default function VoucherModal({ booking, onClose }) {
             <span>Booking Confirmed &amp; Guaranteed</span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleResendEmail}
+              disabled={sendingEmail}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#061F75] border border-blue-200 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+              title="Resend confirmation email voucher"
+            >
+              <Mail className="w-3.5 h-3.5 text-[#061F75]" />
+              <span>{sendingEmail ? 'Dispatching...' : 'Email Voucher'}</span>
+            </button>
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-bold transition-colors cursor-pointer"

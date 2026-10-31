@@ -239,6 +239,12 @@ app.get('/api/admin/metrics', (req, res) => {
   res.json(metrics);
 });
 
+// 7. Transactional Email Dispatch Endpoint
+const sendVoucherHandler = require('../api/send-voucher');
+app.post('/api/send-voucher', (req, res) => {
+  sendVoucherHandler(req, res);
+});
+
 // Serve frontend build if available
 const clientDistPath = path.join(__dirname, '../client/dist');
 app.use(express.static(clientDistPath));
