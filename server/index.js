@@ -181,7 +181,59 @@ app.get('/api/bookings/:id', (req, res) => {
   res.json({ booking });
 });
 
-// 5. Admin Metrics
+const adminService = require('./services/adminService');
+
+// 5. Admin Endpoints for Pricing, Locations & Order Status
+app.get('/api/admin/lots', (req, res) => {
+  res.json({ lots: adminService.getAllLots() });
+});
+
+app.post('/api/admin/lots', (req, res) => {
+  const newLot = adminService.addLot(req.body);
+  res.status(201).json({ success: true, lot: newLot });
+});
+
+const handleLotUpdate = (req, res) => {
+  const id = req.params.id || req.query.id;
+  if (!id) return res.status(400).json({ error: 'Lot ID required' });
+  const updated = adminService.updateLot(id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Lot not found' });
+  res.json({ success: true, lot: updated });
+};
+
+const handleLotDelete = (req, res) => {
+  const id = req.params.id || req.query.id;
+  if (!id) return res.status(400).json({ error: 'Lot ID required' });
+  const deleted = adminService.deleteLot(id);
+  if (!deleted) return res.status(404).json({ error: 'Lot not found' });
+  res.json({ success: true, message: 'Lot deleted' });
+};
+
+app.put('/api/admin/lots', handleLotUpdate);
+app.put('/api/admin/lots/:id', handleLotUpdate);
+
+app.delete('/api/admin/lots', handleLotDelete);
+app.delete('/api/admin/lots/:id', handleLotDelete);
+
+app.get('/api/admin/bookings', (req, res) => {
+  res.json({
+    bookings: revenueLedger.bookings,
+    stats: revenueLedger.stats
+  });
+});
+
+const handleBookingUpdate = (req, res) => {
+  const id = req.params.id || req.query.id;
+  if (!id) return res.status(400).json({ error: 'Booking ID required' });
+  const updated = adminService.updateBookingStatus(id, req.body.status);
+  if (!updated) return res.status(404).json({ error: 'Booking not found' });
+  res.json({ success: true, booking: updated });
+};
+
+app.put('/api/admin/bookings', handleBookingUpdate);
+app.put('/api/admin/bookings/:id', handleBookingUpdate);
+
+// 6. Admin Metrics
 app.get('/api/admin/metrics', (req, res) => {
   const metrics = revenueLedger.getMetrics();
   res.json(metrics);

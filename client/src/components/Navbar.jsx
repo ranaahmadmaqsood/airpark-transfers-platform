@@ -1,7 +1,7 @@
 import React from 'react';
 import { Plane, Phone, Mail, ShieldCheck, Star, Search, FileText } from 'lucide-react';
 
-export default function Navbar({ onOpenLookup, onAirportQuickSelect, selectedAirport }) {
+export default function Navbar({ onOpenLookup, onOpenAdmin, onAirportQuickSelect, selectedAirport }) {
   const quickAirports = [
     { code: 'LHR', label: 'Heathrow' },
     { code: 'LGW', label: 'Gatwick' },
@@ -106,10 +106,21 @@ export default function Navbar({ onOpenLookup, onAirportQuickSelect, selectedAir
 
           <button
             onClick={onOpenLookup}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-[#061F75] bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-[#061F75] bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer shadow-sm"
           >
             <FileText className="w-4 h-4 text-[#061F75]" />
-            <span>Find My Booking</span>
+            <span className="hidden sm:inline">Find My Booking</span>
+            <span className="sm:hidden">Lookup</span>
+          </button>
+
+          <button
+            onClick={onOpenAdmin}
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-white bg-[#061F75] hover:bg-[#0B2EA2] transition-colors cursor-pointer shadow-sm border border-blue-900"
+            title="Backend Pricing, Yards & Orders Management"
+          >
+            <ShieldCheck className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">Admin Portal</span>
+            <span className="sm:hidden">Admin</span>
           </button>
         </div>
       </div>

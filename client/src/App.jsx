@@ -4,6 +4,7 @@ import HeroSearch from './components/HeroSearch';
 import ParkingCard from './components/ParkingCard';
 import BookingModal from './components/BookingModal';
 import VoucherModal from './components/VoucherModal';
+import AdminPortal from './components/AdminPortal';
 import FaqSection from './components/FaqSection';
 import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag } from 'lucide-react';
 
@@ -12,6 +13,7 @@ export default function App() {
   const [parkingLots, setParkingLots] = useState([]);
   const [loadingParking, setLoadingParking] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [adminOpen, setAdminOpen] = useState(false);
   const [searchParams, setSearchParams] = useState({
     airport: 'LHR',
     fromDate: '2026-11-07',
@@ -99,6 +101,7 @@ export default function App() {
       {/* Top Navbar */}
       <Navbar
         onOpenLookup={() => setLookupOpen(true)}
+        onOpenAdmin={() => setAdminOpen(true)}
         onAirportQuickSelect={handleQuickAirportSelect}
         selectedAirport={selectedAirport}
       />
@@ -236,6 +239,16 @@ export default function App() {
         <VoucherModal
           booking={voucherData}
           onClose={() => setVoucherData(null)}
+        />
+      )}
+
+      {/* Operator Admin Management Portal */}
+      {adminOpen && (
+        <AdminPortal
+          onClose={() => {
+            setAdminOpen(false);
+            fetchParkingLots(searchParams);
+          }}
         />
       )}
 

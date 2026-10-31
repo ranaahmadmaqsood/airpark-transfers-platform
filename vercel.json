@@ -20,6 +20,22 @@
       "dest": "/api/bookings.js"
     },
     {
+      "src": "/api/admin/lots/(.*)",
+      "dest": "/api/admin/lots.js?id=$1"
+    },
+    {
+      "src": "/api/admin/lots",
+      "dest": "/api/admin/lots.js"
+    },
+    {
+      "src": "/api/admin/bookings/(.*)",
+      "dest": "/api/admin/bookings.js?id=$1"
+    },
+    {
+      "src": "/api/admin/bookings",
+      "dest": "/api/admin/bookings.js"
+    },
+    {
       "src": "/api/admin/metrics",
       "dest": "/api/admin/metrics.js"
     },
