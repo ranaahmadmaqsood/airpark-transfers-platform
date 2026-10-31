@@ -359,12 +359,18 @@ export async function getAdminLots() {
 }
 
 export async function saveAdminLot(lotFormData, editingId = null) {
+  const baseRate = parseFloat(lotFormData.baseDailyRate) || 5.50;
+  const netRate = parseFloat((baseRate * 0.70).toFixed(2));
+  const commissionRate = 0.30;
+
   const lotPayload = {
     airport_code: lotFormData.airportCode,
     name: lotFormData.name,
     operator_name: lotFormData.operatorName || 'Airport Parking Deals Express',
     type: lotFormData.type,
-    base_daily_rate: parseFloat(lotFormData.baseDailyRate) || 5.50,
+    base_daily_rate: baseRate,
+    operator_net_rate: netRate,
+    commission_rate: commissionRate,
     yard_location: lotFormData.yardLocation,
     transfer_duration_minutes: parseInt(lotFormData.transferDurationMinutes, 10) || 0,
     transfer_frequency_minutes: parseInt(lotFormData.transferFrequencyMinutes, 10) || 0,
