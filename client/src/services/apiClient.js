@@ -197,13 +197,15 @@ export async function searchParkingLots(params) {
     }
   }
 
+  const platformSettings = await getPlatformSettings();
+  const bookingFee = typeof platformSettings.bookingFee === 'number' ? platformSettings.bookingFee : 1.95;
+
   return lots.map(lot => {
     const baseDailyRate = parseFloat(lot.baseDailyRate) || 5.50;
     const gateDailyRate = Math.round((baseDailyRate * 1.55) * 100) / 100;
     const gateTotal = Math.round((gateDailyRate * diffDays) * 100) / 100;
     const subtotal = Math.round((baseDailyRate * diffDays) * 100) / 100;
     const discountAmount = Math.round((subtotal * discountPct) * 100) / 100;
-    const bookingFee = 1.95;
     const totalPayable = Math.round((subtotal - discountAmount + bookingFee) * 100) / 100;
 
     return {
@@ -233,6 +235,17 @@ export async function createNewBooking(bookingData) {
   const id = `AP-2026-${Math.floor(1000 + Math.random() * 9000)}`;
   const qrToken = 'QR_' + Math.random().toString(36).substring(2, 10).toUpperCase();
   const totalCharged = parseFloat(bookingData.pricing?.totalPayable || 49.95);
+  const platformSettings = await getPlatformSettings();
+  const bookingFee = parseFloat(bookingData.pricing?.bookingFee ?? platformSettings.bookingFee ?? 1.95);
+
+  const initialHistory = [
+    {
+      status: 'booked',
+      timestamp: new Date().toISOString(),
+      note: 'Reservation confirmed online',
+      operator: 'System'
+    }
+  ];
 
   const newBooking = {
     id,
@@ -248,10 +261,16 @@ export async function createNewBooking(bookingData) {
     date_details: bookingData.dateDetails || {},
     operator_net: parseFloat(bookingData.pricing?.operatorNet || 30.00),
     commission_earned: 14.50,
-    booking_fee: parseFloat(bookingData.pricing?.bookingFee || 1.95),
+    booking_fee: bookingFee,
     total_charged: totalCharged,
     qr_token: qrToken,
-    status: 'confirmed'
+    status: 'confirmed',
+    parking_status: 'booked',
+    compound_bay: '',
+    key_tag_number: '',
+    mileage_in: '',
+    service_charges: [],
+    status_history: initialHistory
   };
 
   const clientNormalizedBooking = {
@@ -266,8 +285,15 @@ export async function createNewBooking(bookingData) {
     vehicleReg: bookingData.vehicleReg || 'N/A',
     dateDetails: bookingData.dateDetails,
     totalCharged,
+    bookingFee,
     qrToken,
     status: 'confirmed',
+    parkingStatus: 'booked',
+    compoundBay: '',
+    keyTagNumber: '',
+    mileageIn: '',
+    serviceCharges: [],
+    statusHistory: initialHistory,
     createdAt: new Date().toISOString()
   };
 
@@ -340,6 +366,16 @@ export async function findBookingByRef(ref) {
         vehicleReg: data.vehicle_reg,
         dateDetails: data.date_details,
         totalCharged: parseFloat(data.total_charged || 0),
+        bookingFee: parseFloat(data.booking_fee || 1.95),
+        operatorNet: parseFloat(data.operator_net || 0),
+        commissionEarned: parseFloat(data.commission_earned || 0),
+        qrToken: data.qr_token || `QR_${data.id}`,
+        parkingStatus: data.parking_status || 'booked',
+        compoundBay: data.compound_bay || '',
+        keyTagNumber: data.key_tag_number || '',
+        mileageIn: data.mileage_in || '',
+        serviceCharges: Array.isArray(data.service_charges) ? data.service_charges : [],
+        statusHistory: Array.isArray(data.status_history) ? data.status_history : [],
         status: data.status,
         createdAt: data.created_at
       };
@@ -494,6 +530,15 @@ export async function getAdminBookings() {
         vehicleReg: b.vehicle_reg,
         dateDetails: b.date_details,
         totalCharged: parseFloat(b.total_charged || 0),
+        bookingFee: parseFloat(b.booking_fee || 1.95),
+        operatorNet: parseFloat(b.operator_net || 0),
+        commissionEarned: parseFloat(b.commission_earned || 0),
+        parkingStatus: b.parking_status || 'booked',
+        compoundBay: b.compound_bay || '',
+        keyTagNumber: b.key_tag_number || '',
+        mileageIn: b.mileage_in || '',
+        serviceCharges: Array.isArray(b.service_charges) ? b.service_charges : [],
+        statusHistory: Array.isArray(b.status_history) ? b.status_history : [],
         status: b.status,
         createdAt: b.created_at
       }));
@@ -574,6 +619,210 @@ export async function updateBookingDetails(bookingId, updates) {
   const updatedBooking = await findBookingByRef(cleanId);
   dispatchVoucherEmail(updatedBooking);
   return updatedBooking;
+}
+
+// --- Platform Settings Management ---
+export async function getPlatformSettings() {
+  try {
+    const { data, error } = await supabase.from('platform_settings').select('*');
+    if (!error && data && data.length > 0) {
+      const settings = {};
+      data.forEach(item => {
+        settings[item.key] = typeof item.value === 'number' ? item.value : parseFloat(item.value);
+      });
+      return {
+        bookingFee: typeof settings.booking_fee === 'number' ? settings.booking_fee : 1.95,
+        platformCommissionRate: typeof settings.platform_commission_rate === 'number' ? settings.platform_commission_rate : 0.28
+      };
+    }
+  } catch (e) {
+    console.error('Failed to load platform settings', e);
+  }
+
+  try {
+    const local = localStorage.getItem('apd_platform_settings');
+    if (local) return JSON.parse(local);
+  } catch (e) {}
+
+  return { bookingFee: 1.95, platformCommissionRate: 0.28 };
+}
+
+export async function updatePlatformSettings(newSettings) {
+  const bookingFee = parseFloat(newSettings.bookingFee) ?? 1.95;
+  const platformCommissionRate = parseFloat(newSettings.platformCommissionRate) ?? 0.28;
+
+  try {
+    await supabase.from('platform_settings').upsert([
+      { key: 'booking_fee', value: bookingFee, updated_at: new Date().toISOString() },
+      { key: 'platform_commission_rate', value: platformCommissionRate, updated_at: new Date().toISOString() }
+    ]);
+  } catch (e) {
+    console.error('Failed to save platform settings to Supabase', e);
+  }
+
+  try {
+    localStorage.setItem('apd_platform_settings', JSON.stringify({ bookingFee, platformCommissionRate }));
+  } catch (e) {}
+
+  return { bookingFee, platformCommissionRate };
+}
+
+// --- Booking Service Charges & Surcharges (Add / Subtract) ---
+export async function addBookingServiceCharge(bookingId, chargeItem) {
+  const cleanId = (bookingId || '').trim().toUpperCase();
+  const booking = await findBookingByRef(cleanId);
+  const currentCharges = Array.isArray(booking.serviceCharges) ? [...booking.serviceCharges] : [];
+
+  const amount = parseFloat(chargeItem.amount) || 0;
+  const newCharge = {
+    id: 'chg_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+    description: (chargeItem.description || 'Service Surcharge').trim(),
+    amount: amount,
+    addedAt: new Date().toISOString()
+  };
+  currentCharges.push(newCharge);
+
+  const updatedTotal = parseFloat((booking.totalCharged + amount).toFixed(2));
+  const history = Array.isArray(booking.statusHistory) ? [...booking.statusHistory] : [];
+  history.unshift({
+    status: 'charge_adjusted',
+    timestamp: new Date().toISOString(),
+    note: `${amount >= 0 ? 'Added' : 'Subtracted'} service charge: ${newCharge.description} (${amount >= 0 ? '+' : ''}£${amount.toFixed(2)})`,
+    operator: 'Operator'
+  });
+
+  try {
+    await supabase.from('bookings').update({
+      service_charges: currentCharges,
+      total_charged: updatedTotal,
+      status_history: history
+    }).ilike('id', cleanId);
+  } catch (e) {
+    console.error('Supabase add charge error', e);
+  }
+
+  try {
+    const localList = getLocalBookings();
+    const updatedList = localList.map(b => {
+      if ((b.id || '').toUpperCase() === cleanId) {
+        return {
+          ...b,
+          serviceCharges: currentCharges,
+          totalCharged: updatedTotal,
+          statusHistory: history
+        };
+      }
+      return b;
+    });
+    localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(updatedList));
+  } catch (e) {}
+
+  const updated = await findBookingByRef(cleanId);
+  dispatchVoucherEmail(updated);
+  return updated;
+}
+
+export async function removeBookingServiceCharge(bookingId, chargeId) {
+  const cleanId = (bookingId || '').trim().toUpperCase();
+  const booking = await findBookingByRef(cleanId);
+  const currentCharges = Array.isArray(booking.serviceCharges) ? [...booking.serviceCharges] : [];
+  const target = currentCharges.find(c => c.id === chargeId);
+  if (!target) return booking;
+
+  const filtered = currentCharges.filter(c => c.id !== chargeId);
+  const updatedTotal = parseFloat((booking.totalCharged - target.amount).toFixed(2));
+  const history = Array.isArray(booking.statusHistory) ? [...booking.statusHistory] : [];
+  history.unshift({
+    status: 'charge_removed',
+    timestamp: new Date().toISOString(),
+    note: `Removed service charge: ${target.description} (£${target.amount.toFixed(2)})`,
+    operator: 'Operator'
+  });
+
+  try {
+    await supabase.from('bookings').update({
+      service_charges: filtered,
+      total_charged: updatedTotal,
+      status_history: history
+    }).ilike('id', cleanId);
+  } catch (e) {
+    console.error('Supabase remove charge error', e);
+  }
+
+  try {
+    const localList = getLocalBookings();
+    const updatedList = localList.map(b => {
+      if ((b.id || '').toUpperCase() === cleanId) {
+        return {
+          ...b,
+          serviceCharges: filtered,
+          totalCharged: updatedTotal,
+          statusHistory: history
+        };
+      }
+      return b;
+    });
+    localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(updatedList));
+  } catch (e) {}
+
+  const updated = await findBookingByRef(cleanId);
+  dispatchVoucherEmail(updated);
+  return updated;
+}
+
+// --- Compound Parking & Pickup Lifecycle Operations ---
+export async function updateBookingOperations(bookingId, operationsData) {
+  const cleanId = (bookingId || '').trim().toUpperCase();
+  const booking = await findBookingByRef(cleanId);
+
+  const history = Array.isArray(booking.statusHistory) ? [...booking.statusHistory] : [];
+  if (operationsData.parkingStatus && operationsData.parkingStatus !== booking.parkingStatus) {
+    const statusLabels = {
+      booked: 'Awaiting Customer Arrival',
+      vehicle_received: 'Vehicle Received & Keys Handed Over',
+      parked_compound: 'Safely Parked in Compound Yard',
+      ready_for_return: 'Dispatched to Terminal for Customer Pickup',
+      picked_up: 'Vehicle Picked Up & Customer Departed',
+      cancelled: 'Cancelled / No Show'
+    };
+    history.unshift({
+      status: operationsData.parkingStatus,
+      timestamp: new Date().toISOString(),
+      note: operationsData.note || `Status updated to ${statusLabels[operationsData.parkingStatus] || operationsData.parkingStatus}`,
+      operator: 'Compound Operations Staff'
+    });
+  }
+
+  const dbPayload = {
+    status_history: history
+  };
+  if (operationsData.parkingStatus !== undefined) dbPayload.parking_status = operationsData.parkingStatus;
+  if (operationsData.compoundBay !== undefined) dbPayload.compound_bay = operationsData.compoundBay.trim();
+  if (operationsData.keyTagNumber !== undefined) dbPayload.key_tag_number = operationsData.keyTagNumber.trim();
+  if (operationsData.mileageIn !== undefined) dbPayload.mileage_in = operationsData.mileageIn.trim();
+
+  try {
+    await supabase.from('bookings').update(dbPayload).ilike('id', cleanId);
+  } catch (e) {
+    console.error('Supabase operations update error', e);
+  }
+
+  try {
+    const localList = getLocalBookings();
+    const updatedList = localList.map(b => {
+      if ((b.id || '').toUpperCase() === cleanId) {
+        return {
+          ...b,
+          ...operationsData,
+          statusHistory: history
+        };
+      }
+      return b;
+    });
+    localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(updatedList));
+  } catch (e) {}
+
+  return await findBookingByRef(cleanId);
 }
 
 // --- Live Coupon Management Endpoints ---

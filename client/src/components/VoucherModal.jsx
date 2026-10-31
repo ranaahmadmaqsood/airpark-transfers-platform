@@ -127,8 +127,10 @@ export default function VoucherModal({ booking, onClose }) {
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/20 text-xs text-blue-100">
                 <span>Airport: <strong className="text-white">{currentBooking.airport}</strong></span>
-                <span>Customer: <strong className="text-white">{currentBooking.customerName}</strong></span>
-                <span>Status: <strong className="text-emerald-300 uppercase">{currentBooking.status || 'CONFIRMED'}</strong></span>
+                <span>Vehicle Status: <strong className="text-emerald-300 uppercase tracking-wide">{(currentBooking.parkingStatus || 'confirmed').replace('_', ' ')}</strong></span>
+                {currentBooking.compoundBay && (
+                  <span>Compound Bay: <strong className="text-amber-300 uppercase">{currentBooking.compoundBay}</strong></span>
+                )}
               </div>
             </div>
           </div>
@@ -303,8 +305,16 @@ export default function VoucherModal({ booking, onClose }) {
               <span>Booking &amp; Administration Fee:</span>
               <span>£{bookingFee.toFixed(2)}</span>
             </div>
+            {Array.isArray(currentBooking.serviceCharges) && currentBooking.serviceCharges.map((sc) => (
+              <div key={sc.id} className="flex justify-between font-semibold text-slate-800">
+                <span>{sc.description}:</span>
+                <span className={sc.amount >= 0 ? 'text-[#061F75]' : 'text-emerald-700'}>
+                  {sc.amount >= 0 ? '+' : ''}£{parseFloat(sc.amount).toFixed(2)}
+                </span>
+              </div>
+            ))}
             <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-black text-[#061F75]">
-              <span>Total Paid (Prepaid Online Voucher):</span>
+              <span>Total Amount (Prepaid Online Voucher):</span>
               <span className="text-emerald-700">£{totalCharged.toFixed(2)}</span>
             </div>
           </div>

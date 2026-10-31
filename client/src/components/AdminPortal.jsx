@@ -3,11 +3,14 @@ import {
   getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus,
   authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots,
   getCoupons, saveCoupon, removeCoupon, toggleCouponStatus,
-  getAllAdminAirports, saveAirport, toggleAirportStatus, removeAirport, dispatchVoucherEmail
+  getAllAdminAirports, saveAirport, toggleAirportStatus, removeAirport, dispatchVoucherEmail,
+  getPlatformSettings, updatePlatformSettings, addBookingServiceCharge, removeBookingServiceCharge, updateBookingOperations
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
-  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut, Zap, Tag, Download, Filter, Search, TrendingUp, Check, Percent, Send
+  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, 
+  Lock, KeyRound, AlertTriangle, LogOut, Tag, Download, Filter, Search, TrendingUp, 
+  Check, Percent, Send, Sliders, Receipt, PlusCircle, History, Sparkles, Key, FileSpreadsheet
 } from 'lucide-react';
 
 // Error Boundary to prevent any blank screen crashes
@@ -49,9 +52,9 @@ class AdminErrorBoundary extends Component {
                   logoutOperator();
                   window.location.reload();
                 }}
-                className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded-xl text-xs cursor-pointer"
+                className="w-full py-3 bg-red-600/80 hover:bg-red-700 text-white font-bold rounded-xl text-xs cursor-pointer"
               >
-                Reset Session &amp; Login Again
+                Reset Session
               </button>
             </div>
           </div>
@@ -63,7 +66,7 @@ class AdminErrorBoundary extends Component {
 }
 
 function AdminPortalContent({ onBackToStorefront }) {
-  // Authentication state
+  // Authentication states
   const [operatorUser, setOperatorUser] = useState(() => getOperatorSession());
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -72,11 +75,13 @@ function AdminPortalContent({ onBackToStorefront }) {
   const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Portal tabs & data
-  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'coupons' | 'airports'
+  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'coupons' | 'airports' | 'settings'
   const [lots, setLots] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [coupons, setCoupons] = useState([]);
   const [airports, setAirports] = useState([]);
+  const [platformSettings, setPlatformSettings] = useState({ bookingFee: '1.95', platformCommissionRate: '28' });
+  const [savingSettings, setSavingSettings] = useState(false);
   const [loading, setLoading] = useState(true);
   const [realtimeActive, setRealtimeActive] = useState(false);
 
@@ -124,9 +129,34 @@ function AdminPortalContent({ onBackToStorefront }) {
   });
   const [savingAirport, setSavingAirport] = useState(false);
 
-  // Selected customer profile view
+  // Selected customer profile view & operations tracker
   const [selectedCustomerOrder, setSelectedCustomerOrder] = useState(null);
   const [adminEmailStatus, setAdminEmailStatus] = useState(null);
+  const [operationsForm, setOperationsForm] = useState({
+    parkingStatus: 'booked',
+    compoundBay: '',
+    keyTagNumber: '',
+    mileageIn: '',
+    operatorNote: ''
+  });
+  const [savingOperations, setSavingOperations] = useState(false);
+
+  // Service Charges Form (Add / Subtract on invoice)
+  const [newChargeForm, setNewChargeForm] = useState({ description: '', amount: '' });
+  const [addingCharge, setAddingCharge] = useState(false);
+
+  useEffect(() => {
+    if (selectedCustomerOrder) {
+      setOperationsForm({
+        parkingStatus: selectedCustomerOrder.parkingStatus || 'booked',
+        compoundBay: selectedCustomerOrder.compoundBay || '',
+        keyTagNumber: selectedCustomerOrder.keyTagNumber || '',
+        mileageIn: selectedCustomerOrder.mileageIn || '',
+        operatorNote: ''
+      });
+      setNewChargeForm({ description: '', amount: '' });
+    }
+  }, [selectedCustomerOrder]);
 
   useEffect(() => {
     if (operatorUser) {
@@ -146,20 +176,22 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   }, [operatorUser]);
 
-  const handleLogin = async (e, overrideEmail = null, overridePassword = null) => {
+  const handleLogin = async (e) => {
     if (e) e.preventDefault();
     if (failedAttempts >= 5) {
       setAuthError('Too many failed attempts. Security cooldown active. Please wait 30 seconds.');
       return;
     }
 
-    const emailToUse = overrideEmail || authEmail || 'admin@airportparkingdeals.uk';
-    const passToUse = overridePassword || authPassword || '7890';
+    if (!authEmail.trim() || !authPassword.trim()) {
+      setAuthError('Please enter both operator ID and password.');
+      return;
+    }
 
     setAuthLoading(true);
     setAuthError(null);
 
-    const res = await authenticateOperator(emailToUse, passToUse);
+    const res = await authenticateOperator(authEmail, authPassword);
     setAuthLoading(false);
 
     if (res && res.success) {
@@ -171,12 +203,6 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
-  const handleQuickUnlock = () => {
-    setAuthEmail('admin@airportparkingdeals.uk');
-    setAuthPassword('7890');
-    handleLogin(null, 'admin@airportparkingdeals.uk', '7890');
-  };
-
   const handleLogout = () => {
     logoutOperator();
     setOperatorUser(null);
@@ -185,16 +211,23 @@ function AdminPortalContent({ onBackToStorefront }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lotsData, bookingsData, couponsData, airportsData] = await Promise.all([
+      const [lotsData, bookingsData, couponsData, airportsData, settingsData] = await Promise.all([
         getAdminLots(),
         getAdminBookings(),
         getCoupons(),
-        getAllAdminAirports()
+        getAllAdminAirports(),
+        getPlatformSettings()
       ]);
       setLots(Array.isArray(lotsData) ? lotsData : []);
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
       setCoupons(Array.isArray(couponsData) ? couponsData : []);
       setAirports(Array.isArray(airportsData) ? airportsData : []);
+      if (settingsData) {
+        setPlatformSettings({
+          bookingFee: String(settingsData.bookingFee ?? '1.95'),
+          platformCommissionRate: String(Math.round((settingsData.platformCommissionRate ?? 0.28) * 100))
+        });
+      }
       setRealtimeActive(true);
     } catch (err) {
       console.error('Failed to load admin data', err);
@@ -255,18 +288,17 @@ function AdminPortalContent({ onBackToStorefront }) {
     if (!window.confirm('Are you sure you want to delete this parking compound yard from the live database?')) return;
     try {
       await removeAdminLot(id);
-      setLots(prev => prev.filter(l => l.id !== id));
       await fetchData();
     } catch (err) {
-      alert('Delete failed: ' + err.message);
+      alert('Error deleting compound lot: ' + err.message);
     }
   };
 
-  // Update booking order status in real-time
-  const handleUpdateStatus = async (bookingId, newStatus) => {
+  // Update Booking Status
+  const handleUpdateStatus = async (id, newStatus) => {
     try {
-      await changeBookingStatus(bookingId, newStatus);
-      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status: newStatus } : b));
+      await changeBookingStatus(id, newStatus);
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: newStatus } : b));
     } catch (err) {
       alert('Status update failed: ' + err.message);
     }
@@ -288,19 +320,19 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
-  // Toggle Coupon Active / Disabled
+  // Toggle Coupon Active/Inactive
   const handleToggleCoupon = async (code, currentStatus) => {
     try {
       await toggleCouponStatus(code, !currentStatus);
       setCoupons(prev => prev.map(c => c.code === code ? { ...c, isActive: !currentStatus } : c));
     } catch (err) {
-      alert('Error toggling coupon: ' + err.message);
+      alert('Error toggling coupon status: ' + err.message);
     }
   };
 
   // Delete Coupon in real-time
   const handleDeleteCoupon = async (code) => {
-    if (!window.confirm(`Are you sure you want to delete coupon code "${code}"?`)) return;
+    if (!window.confirm(`Are you sure you want to delete promo coupon "${code}"?`)) return;
     try {
       await removeCoupon(code);
       setCoupons(prev => prev.filter(c => c.code !== code));
@@ -325,7 +357,7 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
-  // Toggle Airport Active / Disabled
+  // Toggle Airport Active
   const handleToggleAirport = async (code, currentStatus) => {
     try {
       await toggleAirportStatus(code, !currentStatus);
@@ -346,9 +378,83 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
+  // Save Platform Settings (Booking Fee & Commission)
+  const handleSavePlatformSettings = async (e) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      await updatePlatformSettings({
+        bookingFee: parseFloat(platformSettings.bookingFee) || 1.95,
+        platformCommissionRate: (parseFloat(platformSettings.platformCommissionRate) || 28) / 100
+      });
+      alert('Platform settings saved successfully! All live quotes will now calculate with the new booking fee.');
+      await fetchData();
+    } catch (err) {
+      alert('Error saving platform settings: ' + err.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  // Save Vehicle Operations Status (Check-in, Bay, Key Tag, Mileage)
+  const handleSaveOperationsTracker = async (bookingId) => {
+    setSavingOperations(true);
+    try {
+      const updated = await updateBookingOperations(bookingId, {
+        parkingStatus: operationsForm.parkingStatus,
+        compoundBay: operationsForm.compoundBay,
+        keyTagNumber: operationsForm.keyTagNumber,
+        mileageIn: operationsForm.mileageIn,
+        note: operationsForm.operatorNote
+      });
+      setSelectedCustomerOrder(updated);
+      setOperationsForm(prev => ({ ...prev, operatorNote: '' }));
+      await fetchData();
+      alert('Vehicle operations status, bay location, and key tag updated!');
+    } catch (err) {
+      alert('Failed to update operations: ' + err.message);
+    } finally {
+      setSavingOperations(false);
+    }
+  };
+
+  // Add Service Charge or Courtesy Credit
+  const handleAddCharge = async (bookingId) => {
+    if (!newChargeForm.description.trim() || !newChargeForm.amount) {
+      alert('Please provide a description and amount.');
+      return;
+    }
+    setAddingCharge(true);
+    try {
+      const updated = await addBookingServiceCharge(bookingId, {
+        description: newChargeForm.description,
+        amount: parseFloat(newChargeForm.amount)
+      });
+      setSelectedCustomerOrder(updated);
+      setNewChargeForm({ description: '', amount: '' });
+      await fetchData();
+    } catch (err) {
+      alert('Failed to add service charge: ' + err.message);
+    } finally {
+      setAddingCharge(false);
+    }
+  };
+
+  // Remove Service Charge
+  const handleRemoveCharge = async (bookingId, chargeId) => {
+    if (!window.confirm('Are you sure you want to remove this charge adjustment?')) return;
+    try {
+      const updated = await removeBookingServiceCharge(bookingId, chargeId);
+      setSelectedCustomerOrder(updated);
+      await fetchData();
+    } catch (err) {
+      alert('Failed to remove charge: ' + err.message);
+    }
+  };
+
   // Resend email to customer from Admin
   const handleAdminResendEmail = async (booking) => {
-    setAdminEmailStatus('Dispatching email via Resend...');
+    setAdminEmailStatus('Dispatching updated voucher via Resend...');
     try {
       const res = await dispatchVoucherEmail(booking);
       if (res && res.success) {
@@ -362,14 +468,30 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
-  // Export Bookings ANPR Manifest to CSV
-  const handleExportCSV = () => {
+  // Helper to trigger CSV download
+  const downloadCSV = (headers, rows, filename) => {
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 1. Export Full Booking Ledger
+  const handleExportFullLedger = () => {
     if (safeBookings.length === 0) {
       alert('No booking records to export.');
       return;
     }
-
-    const headers = ['Booking Ref', 'Customer Name', 'Email', 'Phone', 'ANPR Vehicle Plate', 'Flight Number', 'Airport', 'Service Package', 'Total Paid (£)', 'Status', 'Date Booked'];
+    const headers = [
+      'Booking Ref', 'Customer Name', 'Email', 'Phone', 'ANPR Vehicle Plate',
+      'Flight Number', 'Airport', 'Service Package', 'Parking Lifecycle Status',
+      'Compound Bay', 'Key Tag Locker', 'Mileage In', 'Booking Admin Fee (£)',
+      'Total Charged (£)', 'Booking Status', 'Booking Timestamp'
+    ];
     const rows = safeBookings.map(b => [
       `"${b.id}"`,
       `"${(b.customerName || '').replace(/"/g, '""')}"`,
@@ -379,21 +501,67 @@ function AdminPortalContent({ onBackToStorefront }) {
       `"${b.flightNumber || 'None'}"`,
       `"${b.airport}"`,
       `"${(b.serviceName || '').replace(/"/g, '""')}"`,
+      `"${b.parkingStatus || 'booked'}"`,
+      `"${b.compoundBay || 'Unassigned'}"`,
+      `"${b.keyTagNumber || 'N/A'}"`,
+      `"${b.mileageIn || 'N/A'}"`,
+      `"${parseFloat(b.bookingFee || 1.95).toFixed(2)}"`,
       `"${parseFloat(b.totalCharged || 0).toFixed(2)}"`,
       `"${b.status || 'confirmed'}"`,
       `"${b.createdAt || ''}"`
     ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ANPR_Manifest_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadCSV(headers, rows, `AirPark_Full_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
   };
 
+  // 2. Export Gate Barrier ANPR Manifest
+  const handleExportBarrierManifest = () => {
+    if (safeBookings.length === 0) {
+      alert('No booking records to export.');
+      return;
+    }
+    const headers = ['Vehicle Plate (ANPR)', 'Compound Bay', 'Key Tag', 'Parking Status', 'Customer Name', 'Customer Phone', 'Flight Number', 'Airport', 'Booking Reference'];
+    const rows = safeBookings.map(b => [
+      `"${b.vehicleReg || 'N/A'}"`,
+      `"${b.compoundBay || 'Unassigned'}"`,
+      `"${b.keyTagNumber || 'N/A'}"`,
+      `"${(b.parkingStatus || 'booked').toUpperCase()}"`,
+      `"${(b.customerName || '').replace(/"/g, '""')}"`,
+      `"${b.customerPhone || ''}"`,
+      `"${b.flightNumber || 'None'}"`,
+      `"${b.airport}"`,
+      `"${b.id}"`
+    ]);
+    downloadCSV(headers, rows, `Gate_Barrier_ANPR_Manifest_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  // 3. Export Financial Reconciliation
+  const handleExportFinancialReconciliation = () => {
+    if (safeBookings.length === 0) {
+      alert('No booking records to export.');
+      return;
+    }
+    const headers = ['Booking Date', 'Booking Ref', 'Airport', 'Service Package', 'Gross Charged (£)', 'Booking Admin Fee (£)', 'Operator Yard Net (£)', 'Platform Commission (£)', 'Payment Status'];
+    const rows = safeBookings.map(b => {
+      const gross = parseFloat(b.totalCharged || 0);
+      const fee = parseFloat(b.bookingFee || 1.95);
+      const net = parseFloat(b.operatorNet || (gross * 0.72));
+      const comm = parseFloat(b.commissionEarned || (gross * 0.28));
+      return [
+        `"${b.createdAt?.split('T')[0] || ''}"`,
+        `"${b.id}"`,
+        `"${b.airport}"`,
+        `"${(b.serviceName || '').replace(/"/g, '""')}"`,
+        `"${gross.toFixed(2)}"`,
+        `"${fee.toFixed(2)}"`,
+        `"${net.toFixed(2)}"`,
+        `"${comm.toFixed(2)}"`,
+        `"${b.status || 'confirmed'}"`
+      ];
+    });
+    downloadCSV(headers, rows, `Financial_Reconciliation_${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  // Safe Fallbacks
   const safeLots = Array.isArray(lots) ? lots : [];
   const safeBookings = Array.isArray(bookings) ? bookings : [];
   const safeCoupons = Array.isArray(coupons) ? coupons : [];
@@ -405,82 +573,78 @@ function AdminPortalContent({ onBackToStorefront }) {
   };
 
   // Financial KPI calculations
-  const totalGrossRevenue = safeBookings.reduce((sum, b) => sum + (parseFloat(b.totalCharged) || 0), 0);
-  const platformCommissionEarned = totalGrossRevenue * 0.28;
-  const netOperatorPayable = totalGrossRevenue - platformCommissionEarned;
-  const activeBookingsCount = safeBookings.filter(b => b.status === 'confirmed').length;
+  const totalGrossRevenue = safeBookings
+    .filter(b => b.status !== 'cancelled')
+    .reduce((sum, b) => sum + parseFloat(b.totalCharged || 0), 0);
+  const platformCommissionEstimate = totalGrossRevenue * ((parseFloat(platformSettings.platformCommissionRate) || 28) / 100);
+  const totalOperatorYardPool = totalGrossRevenue - platformCommissionEstimate;
+  const activeVehiclesCount = safeBookings.filter(b => b.status === 'confirmed').length;
 
-  // Filtered Lots
+  // Filtered lots
   const filteredLots = safeLots.filter(l => {
     if (lotAirportFilter === 'ALL') return true;
-    return (l.airportCode || '').toUpperCase() === lotAirportFilter;
+    return l.airportCode === lotAirportFilter;
   });
 
-  // Filtered Bookings
+  // Filtered orders with search & status & airport filters
   const filteredBookings = safeBookings.filter(b => {
-    const query = orderSearchQuery.toLowerCase();
-    const matchesQuery = !query || 
-      (b.id || '').toLowerCase().includes(query) ||
+    const query = orderSearchQuery.trim().toLowerCase();
+    const matchQuery = !query || 
       (b.customerName || '').toLowerCase().includes(query) ||
       (b.customerEmail || '').toLowerCase().includes(query) ||
-      (b.vehicleReg || '').toLowerCase().includes(query);
+      (b.customerPhone || '').toLowerCase().includes(query) ||
+      (b.vehicleReg || '').toLowerCase().includes(query) ||
+      (b.flightNumber || '').toLowerCase().includes(query) ||
+      (b.compoundBay || '').toLowerCase().includes(query) ||
+      (b.keyTagNumber || '').toLowerCase().includes(query) ||
+      (b.id || '').toLowerCase().includes(query);
 
-    const matchesAirport = orderAirportFilter === 'ALL' || (b.airport || '').toUpperCase() === orderAirportFilter;
-    const matchesStatus = orderStatusFilter === 'ALL' || (b.status || 'confirmed') === orderStatusFilter;
+    const matchAirport = orderAirportFilter === 'ALL' || b.airport === orderAirportFilter;
+    const matchStatus = orderStatusFilter === 'ALL' || b.status === orderStatusFilter;
 
-    return matchesQuery && matchesAirport && matchesStatus;
+    return matchQuery && matchAirport && matchStatus;
   });
 
-  // IF NOT AUTHENTICATED: SHOW SECURE OPERATOR LOGIN GATE
+  // Status visual map
+  const parkingStatusConfig = {
+    booked: { label: 'Awaiting Arrival', bg: 'bg-slate-100 text-slate-700 border-slate-300' },
+    vehicle_received: { label: 'Checked In', bg: 'bg-blue-100 text-[#061F75] border-blue-300' },
+    parked_compound: { label: 'In Compound', bg: 'bg-amber-100 text-amber-900 border-amber-300' },
+    ready_for_return: { label: 'At Forecourt', bg: 'bg-purple-100 text-purple-900 border-purple-300' },
+    picked_up: { label: 'Picked Up', bg: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+    cancelled: { label: 'Cancelled', bg: 'bg-red-100 text-red-900 border-red-300' }
+  };
+
+  // --- 1. RENDER AUTHENTICATION FORM IF NOT LOGGED IN ---
   if (!operatorUser) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
-        <div className="w-full max-w-md bg-slate-800/95 border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
-          {/* Top Lock Badge */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#061F75] to-[#C8102E] p-0.5 mx-auto mb-4 flex items-center justify-center shadow-lg">
-            <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center">
-              <Lock className="w-8 h-8 text-amber-400" />
-            </div>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-[#061F75] to-slate-900 text-white flex flex-col justify-center items-center p-4 selection:bg-[#C8102E] selection:text-white">
+        <div className="w-full max-w-md bg-slate-900/90 backdrop-blur-xl p-8 rounded-3xl border border-slate-700 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#061F75] via-[#C8102E] to-[#FFB400]" />
 
+          {/* Header */}
           <div className="text-center mb-6">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C8102E] bg-red-950/80 border border-red-800/60 px-3 py-1 rounded-full">
-              RESTRICTED ACCESS
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#061F75] to-[#C8102E] p-0.5 mx-auto mb-3 shadow-lg flex items-center justify-center">
+              <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center">
+                <Lock className="w-8 h-8 text-[#FFB400]" />
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-[#C8102E] block">
+              AUTHORISED OPERATOR PORTAL
             </span>
-            <h1 className="text-xl sm:text-2xl font-black mt-2 tracking-tight text-white">
-              Operator Portal Security Gate
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Airport Parking Deals UK • Backend Control System
-            </p>
+            <h1 className="text-2xl font-black text-white mt-1">Airport Parking Deals UK</h1>
+            <p className="text-xs text-slate-400 mt-1">Enter your operator credentials to access compound controls</p>
           </div>
 
+          {/* Error Message */}
           {authError && (
-            <div className="p-3.5 mb-5 rounded-2xl bg-red-950/60 border border-red-800 text-xs font-bold text-red-200 flex items-start gap-2.5">
+            <div className="mb-5 p-3.5 rounded-2xl bg-red-950/80 border border-red-700/60 text-xs font-semibold text-red-200 flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{authError}</span>
             </div>
           )}
 
-          {/* Quick Unlock 1-Click Button */}
-          <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/80 to-indigo-950/80 border border-blue-700/60 flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Instant Operator Access</span>
-              </div>
-              <p className="text-[10px] text-slate-300">Fast sign-in with master PIN 7890</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickUnlock}
-              disabled={authLoading}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-black transition-all shadow-md cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              {authLoading ? 'Verifying...' : 'Unlock (7890)'}
-            </button>
-          </div>
-
+          {/* Secure Login Form (Zero displayed passwords) */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -494,37 +658,34 @@ function AdminPortalContent({ onBackToStorefront }) {
                   placeholder="admin@airportparkingdeals.uk"
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full bg-slate-900/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium"
+                  className="w-full bg-slate-950/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                Master Password or 4-Digit PIN
+                Security Password or PIN
               </label>
               <div className="relative flex items-center">
                 <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5" />
                 <input
                   type="password"
                   required
-                  placeholder="Enter master password or PIN (7890)"
+                  placeholder="••••••••••••"
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full bg-slate-900/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium tracking-wider"
+                  className="w-full bg-slate-950/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium tracking-wider"
                 />
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">
-                Default Master PIN: <code className="bg-slate-700 px-1.5 py-0.5 rounded text-amber-300 font-mono">7890</code> or Password: <code className="bg-slate-700 px-1.5 py-0.5 rounded text-amber-300 font-mono">ParkDeals2026!</code>
-              </p>
             </div>
 
             <button
               type="submit"
               disabled={authLoading}
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] hover:from-[#0B2EA2] hover:to-[#A60D25] text-white font-extrabold text-sm transition-all shadow-lg shadow-blue-900/40 cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] hover:from-[#0B2EA2] hover:to-[#A60D25] text-white font-extrabold text-sm transition-all shadow-lg shadow-blue-900/40 cursor-pointer disabled:opacity-50 mt-2"
             >
-              {authLoading ? 'Verifying PostgreSQL Credentials...' : 'Unlock Operator Dashboard'}
+              {authLoading ? 'Verifying PostgreSQL Credentials...' : 'Sign In to Operator Dashboard'}
             </button>
           </form>
 
@@ -535,78 +696,64 @@ function AdminPortalContent({ onBackToStorefront }) {
               className="text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Customer Storefront</span>
+              <span>Return to Public Comparison Storefront</span>
             </button>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-slate-400">
-            <span>🔒 PostgreSQL Crypt() Protected</span>
-            <span>⚡ RLS &amp; Realtime Synced</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // AUTHENTICATED: RENDER FULL OPERATOR DASHBOARD
+  // --- 2. RENDER AUTHENTICATED OPERATOR PORTAL ---
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
-      {/* Top Admin Header Bar */}
-      <header className="bg-[#061F75] text-white px-4 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-4 border-b-2 border-[#C8102E]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-amber-400">
-            ⚙️
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] bg-[#C8102E] text-white px-2 py-0.5 rounded font-black tracking-wider uppercase">
-                OPERATOR PORTAL
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-[#C8102E] selection:text-white">
+      {/* Top Navigation Bar */}
+      <header className="sticky top-0 z-40 bg-[#061F75] text-white shadow-md border-b-2 border-[#C8102E]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBackToStorefront}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+              title="Return to customer comparison site"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Storefront</span>
+            </button>
+            <div className="h-6 w-px bg-white/20" />
+            <div>
+              <span className="text-sm font-black tracking-wide text-white">
+                Airport Parking <span className="text-[#C8102E]">Deals</span>
               </span>
-              <span className="text-xs font-bold text-slate-200">
-                Logged in as: <strong>{operatorUser?.username || 'admin@airportparkingdeals.uk'}</strong>
+              <span className="ml-2 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-[#C8102E] text-white tracking-wider">
+                Operator Master Portal
               </span>
-              {realtimeActive && (
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  PostgreSQL Realtime Active
-                </span>
-              )}
             </div>
-            <h1 className="text-base sm:text-xl font-black">
-              Airport Parking Deals UK • Control Center
-            </h1>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchData}
-            className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white cursor-pointer"
-            title="Refresh Live Data"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-
-          <button
-            onClick={onBackToStorefront}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900/60 hover:bg-blue-900 text-white text-xs font-bold transition-all cursor-pointer border border-blue-700"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Storefront View</span>
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white text-xs font-bold transition-all cursor-pointer shadow-sm"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Lock &amp; Exit</span>
-          </button>
+          <div className="flex items-center gap-3 text-xs">
+            {realtimeActive && (
+              <span className="hidden md:flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 px-2.5 py-1 rounded-full font-bold text-[10px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                PostgreSQL Realtime Sync
+              </span>
+            )}
+            <span className="hidden sm:inline text-blue-200 font-medium">
+              Signed in as: <strong className="text-white">{operatorUser.username}</strong>
+            </span>
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-xl bg-red-600/80 hover:bg-red-700 text-white transition-colors cursor-pointer flex items-center gap-1 font-bold text-xs shadow-sm"
+              title="Logout from operator dashboard"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Tab Navigation Strip */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+      {/* Secondary Navigation & Tab Controls */}
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm sticky top-16 z-30">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveTab('lots')}
@@ -655,16 +802,48 @@ function AdminPortalContent({ onBackToStorefront }) {
             <Plane className="w-4 h-4 text-amber-400" />
             <span>Airports &amp; Terminals ({safeAirports.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+              activeTab === 'settings'
+                ? 'bg-[#061F75] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Sliders className="w-4 h-4 text-amber-400" />
+            <span>Platform Fees &amp; Config</span>
+          </button>
         </div>
 
+        {/* Global Action on Orders: 3 Quick Export Options */}
         {activeTab === 'orders' && (
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-300 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5 text-[#061F75]" />
-            <span>Export ANPR Manifest (CSV)</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleExportFullLedger}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#061F75] text-xs font-bold transition-all border border-blue-200 cursor-pointer shadow-sm"
+              title="Export complete reservations database with passenger details and payment breakdown"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#061F75]" />
+              <span>Full Ledger (CSV)</span>
+            </button>
+            <button
+              onClick={handleExportBarrierManifest}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all border border-slate-300 cursor-pointer shadow-sm"
+              title="Export ANPR vehicle roster for compound security barrier guards"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-600" />
+              <span>Gate Barrier Manifest (CSV)</span>
+            </button>
+            <button
+              onClick={handleExportFinancialReconciliation}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition-all border border-emerald-200 cursor-pointer shadow-sm"
+              title="Export financial accounting reconciliation of yard payouts and commissions"
+            >
+              <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Financial Audit (CSV)</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -682,59 +861,63 @@ function AdminPortalContent({ onBackToStorefront }) {
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Platform Commission (28%)</span>
-            <div className="text-2xl font-black text-emerald-700">£{formatPrice(platformCommissionEarned)}</div>
-            <span className="text-[10px] text-slate-400 block mt-1">Net Platform Revenue</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
+              Platform Commission ({platformSettings.platformCommissionRate}%)
+            </span>
+            <div className="text-2xl font-black text-[#C8102E]">£{formatPrice(platformCommissionEstimate)}</div>
+            <span className="text-[10px] text-slate-500 block mt-1">Net Platform Retained Share</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Operator Yard Pool</span>
-            <div className="text-2xl font-black text-slate-900">£{formatPrice(netOperatorPayable)}</div>
-            <span className="text-[10px] text-slate-400 block mt-1">Forecourt Operator Payout</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Operator Compound Pool</span>
+            <div className="text-2xl font-black text-emerald-700">£{formatPrice(totalOperatorYardPool)}</div>
+            <span className="text-[10px] text-slate-500 block mt-1">Yard Operator Payable Funds</span>
           </div>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Active Vehicles in Compounds</span>
-            <div className="text-2xl font-black text-[#C8102E]">{activeBookingsCount}</div>
-            <span className="text-[10px] text-slate-400 block mt-1">ANPR Verified Bookings</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Active Bookings (ANPR)</span>
+            <div className="text-2xl font-black text-slate-900">{activeVehiclesCount}</div>
+            <span className="text-[10px] text-slate-500 block mt-1">Confirmed Compound Passes</span>
           </div>
         </div>
 
+        {/* Loading Spinner */}
         {loading ? (
           <div className="py-24 text-center text-slate-500 flex items-center justify-center gap-3 bg-white rounded-3xl border border-slate-200 shadow-sm">
             <RefreshCw className="w-6 h-6 animate-spin text-[#061F75]" />
             <span className="font-bold text-sm">Querying Supabase PostgreSQL cluster...</span>
           </div>
         ) : (
-          <>
-            {/* TAB 1: YARDS & RATES */}
+          <div>
+            {/* TAB 1: PARKING LOTS & RATES */}
             {activeTab === 'lots' && (
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
                   <div>
-                    <h2 className="text-lg font-black text-[#061F75]">Live Compound Yards &amp; Dynamic Pricing</h2>
+                    <h2 className="text-lg font-black text-[#061F75]">Compound Parking Locations &amp; Daily Tariffs</h2>
                     <p className="text-xs text-slate-500">
-                      Changes made here immediately write to PostgreSQL and broadcast to all storefront quotes in real time.
+                      Manage operator compound rates, terminal valet forecourts, and shuttle frequencies.
                     </p>
                   </div>
                   <button
-                    onClick={() => handleOpenLotModal()}
+                    onClick={() => handleOpenLotModal(null)}
                     className="px-5 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-extrabold transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>+ Add New Compound Yard</span>
+                    <span>+ Add New Compound Location</span>
                   </button>
                 </div>
 
-                {/* Airport Quick Filter Strip */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold text-slate-600">
-                  <span className="text-[11px] text-slate-400 uppercase tracking-wider mr-1">Airport:</span>
+                {/* Airport Filter Bar */}
+                <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-2xl border border-slate-200 text-xs">
+                  <span className="font-bold text-slate-500 px-2 flex items-center gap-1">
+                    <Filter className="w-3.5 h-3.5" />
+                    Airport:
+                  </span>
                   <button
                     onClick={() => setLotAirportFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-xl cursor-pointer transition-colors ${
-                      lotAirportFilter === 'ALL'
-                        ? 'bg-[#061F75] text-white'
-                        : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700'
+                    className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-colors ${
+                      lotAirportFilter === 'ALL' ? 'bg-[#061F75] text-white' : 'text-slate-600 hover:bg-slate-100'
                     }`}
                   >
                     ALL
@@ -743,13 +926,11 @@ function AdminPortalContent({ onBackToStorefront }) {
                     <button
                       key={ap.code}
                       onClick={() => setLotAirportFilter(ap.code)}
-                      className={`px-3 py-1.5 rounded-xl cursor-pointer transition-colors ${
-                        lotAirportFilter === ap.code
-                          ? 'bg-[#061F75] text-white'
-                          : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700'
+                      className={`px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-colors ${
+                        lotAirportFilter === ap.code ? 'bg-[#061F75] text-white' : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
-                      {ap.code}
+                      {ap.name} ({ap.code})
                     </button>
                   ))}
                 </div>
@@ -760,10 +941,10 @@ function AdminPortalContent({ onBackToStorefront }) {
                       <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
                         <tr>
                           <th className="py-4 px-5">Airport</th>
-                          <th className="py-4 px-5">Package &amp; Yard Location</th>
-                          <th className="py-4 px-5">Service Type</th>
+                          <th className="py-4 px-5">Service Name &amp; Yard Location</th>
+                          <th className="py-4 px-5">Type</th>
                           <th className="py-4 px-5">Base Daily Rate</th>
-                          <th className="py-4 px-5">7-Day Estimate</th>
+                          <th className="py-4 px-5">7-Day Total</th>
                           <th className="py-4 px-5 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -771,16 +952,14 @@ function AdminPortalContent({ onBackToStorefront }) {
                         {filteredLots.length === 0 ? (
                           <tr>
                             <td colSpan="6" className="py-12 text-center text-slate-400">
-                              No compound yards found for filter &quot;{lotAirportFilter}&quot;.
+                              No parking lots found matching your filter. Click &quot;+ Add New Compound Location&quot; to add one.
                             </td>
                           </tr>
                         ) : (
                           filteredLots.map((l) => (
                             <tr key={l.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="py-4 px-5">
-                                <span className="bg-blue-100 text-[#061F75] px-2.5 py-1 rounded-lg font-mono font-black text-xs">
-                                  {l.airportCode}
-                                </span>
+                              <td className="py-4 px-5 font-bold text-[#061F75]">
+                                <span className="bg-blue-100 px-2 py-1 rounded text-xs">{l.airportCode}</span>
                               </td>
                               <td className="py-4 px-5">
                                 <div className="font-black text-slate-900 text-sm">{l.name}</div>
@@ -790,13 +969,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                                 </div>
                               </td>
                               <td className="py-4 px-5">
-                                <span
-                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider ${
-                                    l.type === 'meet_and_greet'
-                                      ? 'bg-blue-50 text-[#061F75] border border-blue-200'
-                                      : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                  }`}
-                                >
+                                <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700">
                                   {l.type === 'meet_and_greet' ? 'Meet & Greet' : 'Park & Ride'}
                                 </span>
                               </td>
@@ -832,7 +1005,7 @@ function AdminPortalContent({ onBackToStorefront }) {
               </div>
             )}
 
-            {/* TAB 2: BOOKINGS & ORDERS */}
+            {/* TAB 2: BOOKINGS, ORDERS & PARKING STATUS TRACKER */}
             {activeTab === 'orders' && (
               <div className="space-y-4">
                 {/* Search & Filter Bar */}
@@ -841,7 +1014,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                     <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                     <input
                       type="text"
-                      placeholder="Search by customer, vehicle reg, or booking reference..."
+                      placeholder="Search by customer, plate, bay, tag, or reference..."
                       value={orderSearchQuery}
                       onChange={(e) => setOrderSearchQuery(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-[#061F75] focus:bg-white"
@@ -881,70 +1054,86 @@ function AdminPortalContent({ onBackToStorefront }) {
                           <th className="py-4 px-5">Ref Code</th>
                           <th className="py-4 px-5">Customer Profile</th>
                           <th className="py-4 px-5">ANPR Plate</th>
+                          <th className="py-4 px-5">Vehicle &amp; Parking Status</th>
                           <th className="py-4 px-5">Airport &amp; Service</th>
                           <th className="py-4 px-5">Total Paid</th>
-                          <th className="py-4 px-5">Status</th>
-                          <th className="py-4 px-5 text-right">View Profile</th>
+                          <th className="py-4 px-5">Booking Status</th>
+                          <th className="py-4 px-5 text-right">Dossier / Edit</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {filteredBookings.length === 0 ? (
                           <tr>
-                            <td colSpan="7" className="py-12 text-center text-slate-400">
+                            <td colSpan="8" className="py-12 text-center text-slate-400">
                               No customer reservations match your search or filter.
                             </td>
                           </tr>
                         ) : (
-                          filteredBookings.map((b) => (
-                            <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="py-4 px-5 font-mono font-bold text-[#061F75]">
-                                {b.id}
-                              </td>
-                              <td className="py-4 px-5">
-                                <div className="font-bold text-slate-900">{b.customerName || 'Guest Customer'}</div>
-                                <div className="text-[11px] text-slate-500">{b.customerEmail}</div>
-                                <div className="text-[11px] text-slate-500">{b.customerPhone}</div>
-                              </td>
-                              <td className="py-4 px-5">
-                                <span className="bg-amber-100 border border-amber-300 text-slate-900 px-2 py-0.5 rounded font-mono font-black text-xs">
-                                  {b.vehicleReg || 'N/A'}
-                                </span>
-                              </td>
-                              <td className="py-4 px-5">
-                                <span className="font-bold text-slate-800">{b.airport}</span>
-                                <p className="text-[11px] text-slate-500 truncate max-w-xs">{b.serviceName}</p>
-                              </td>
-                              <td className="py-4 px-5 font-black text-emerald-700 text-sm">
-                                £{formatPrice(b.totalCharged)}
-                              </td>
-                              <td className="py-4 px-5">
-                                <select
-                                  value={b.status || 'confirmed'}
-                                  onChange={(e) => handleUpdateStatus(b.id, e.target.value)}
-                                  className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer ${
-                                    b.status === 'completed'
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                      : b.status === 'cancelled'
-                                      ? 'bg-red-50 text-red-800 border-red-300'
-                                      : 'bg-blue-50 text-blue-800 border-blue-300'
-                                  }`}
-                                >
-                                  <option value="confirmed">Confirmed</option>
-                                  <option value="completed">Completed</option>
-                                  <option value="cancelled">Cancelled</option>
-                                </select>
-                              </td>
-                              <td className="py-4 px-5 text-right">
-                                <button
-                                  onClick={() => { setSelectedCustomerOrder(b); setAdminEmailStatus(null); }}
-                                  className="p-2 rounded-xl bg-slate-100 text-[#061F75] hover:bg-slate-200 transition-colors cursor-pointer"
-                                  title="View Complete Customer Dossier"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))
+                          filteredBookings.map((b) => {
+                            const pStatus = parkingStatusConfig[b.parkingStatus] || parkingStatusConfig.booked;
+                            return (
+                              <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
+                                <td className="py-4 px-5 font-mono font-bold text-[#061F75]">
+                                  {b.id}
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="font-bold text-slate-900">{b.customerName || 'Guest Customer'}</div>
+                                  <div className="text-[11px] text-slate-500">{b.customerEmail}</div>
+                                  <div className="text-[11px] text-slate-500">{b.customerPhone}</div>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="bg-amber-100 border border-amber-300 text-slate-900 px-2 py-0.5 rounded font-mono font-black text-xs">
+                                    {b.vehicleReg || 'N/A'}
+                                  </span>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <div className="flex flex-col gap-1 items-start">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${pStatus.bg}`}>
+                                      {pStatus.label}
+                                    </span>
+                                    {b.compoundBay && (
+                                      <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded">
+                                        Bay: {b.compoundBay}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-4 px-5">
+                                  <span className="font-bold text-slate-800">{b.airport}</span>
+                                  <p className="text-[11px] text-slate-500 truncate max-w-xs">{b.serviceName}</p>
+                                </td>
+                                <td className="py-4 px-5 font-black text-emerald-700 text-sm">
+                                  £{formatPrice(b.totalCharged)}
+                                </td>
+                                <td className="py-4 px-5">
+                                  <select
+                                    value={b.status || 'confirmed'}
+                                    onChange={(e) => handleUpdateStatus(b.id, e.target.value)}
+                                    className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer ${
+                                      b.status === 'completed'
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        : b.status === 'cancelled'
+                                        ? 'bg-red-50 text-red-800 border-red-300'
+                                        : 'bg-blue-50 text-blue-800 border-blue-300'
+                                    }`}
+                                  >
+                                    <option value="confirmed">Confirmed</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                  </select>
+                                </td>
+                                <td className="py-4 px-5 text-right">
+                                  <button
+                                    onClick={() => { setSelectedCustomerOrder(b); setAdminEmailStatus(null); }}
+                                    className="p-2 rounded-xl bg-blue-50 text-[#061F75] hover:bg-blue-100 transition-colors cursor-pointer"
+                                    title="Open Customer Dossier & Manage Operations"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -1128,21 +1317,96 @@ function AdminPortalContent({ onBackToStorefront }) {
                 </div>
               </div>
             )}
-          </>
+
+            {/* TAB 5: PLATFORM FEES & GLOBAL SETTINGS */}
+            {activeTab === 'settings' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm max-w-2xl">
+                  <div className="flex items-center gap-3 pb-4 border-b border-slate-200 mb-6">
+                    <div className="p-2.5 rounded-2xl bg-blue-50 text-[#061F75]">
+                      <Sliders className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-[#061F75]">Platform Fee &amp; Commission Configuration</h2>
+                      <p className="text-xs text-slate-500">
+                        Configure universal booking &amp; administration fees and platform commission rates.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSavePlatformSettings} className="space-y-5 text-xs font-bold text-slate-700">
+                    <div>
+                      <label className="block mb-1.5 text-slate-900 text-sm">
+                        Booking &amp; Administration Fee (£) *
+                      </label>
+                      <p className="text-[11px] text-slate-500 mb-2 font-normal">
+                        Added to every reservation during quotation and checkout to cover payment gateways, operational infrastructure, and customer support.
+                      </p>
+                      <div className="relative flex items-center max-w-xs">
+                        <span className="absolute left-3.5 text-slate-500 font-bold text-sm">£</span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          required
+                          value={platformSettings.bookingFee}
+                          onChange={(e) => setPlatformSettings({ ...platformSettings, bookingFee: e.target.value })}
+                          className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-black text-sm outline-none focus:border-[#061F75] focus:bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <label className="block mb-1.5 text-slate-900 text-sm">
+                        Platform Commission Rate (%) *
+                      </label>
+                      <p className="text-[11px] text-slate-500 mb-2 font-normal">
+                        Percentage retained by the platform from each compound yard booking gross total.
+                      </p>
+                      <div className="relative flex items-center max-w-xs">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          required
+                          value={platformSettings.platformCommissionRate}
+                          onChange={(e) => setPlatformSettings({ ...platformSettings, platformCommissionRate: e.target.value })}
+                          className="w-full pl-4 pr-8 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-black text-sm outline-none focus:border-[#061F75] focus:bg-white"
+                        />
+                        <span className="absolute right-3.5 text-slate-500 font-bold text-sm">%</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex gap-3">
+                      <button
+                        type="submit"
+                        disabled={savingSettings}
+                        className="px-6 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold text-xs transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>{savingSettings ? 'Saving to Database...' : 'Save Platform Settings'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </main>
 
-      {/* MODAL: ADD / EDIT LOCATION & PRICE */}
+      {/* MODAL: ADD / EDIT LOCATION LOT */}
       {lotModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-5">
               <div>
                 <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
-                  REAL-TIME DATABASE MUTATION
+                  COMPOUND MANAGEMENT
                 </span>
                 <h3 className="text-lg font-black text-[#061F75]">
-                  {editingLot ? 'Edit Live Yard Rate & Location' : 'Deploy New Compound Yard'}
+                  {editingLot ? 'Edit Compound Location & Tariff' : 'Add New Airport Compound Location'}
                 </h3>
               </div>
               <button
@@ -1294,22 +1558,25 @@ function AdminPortalContent({ onBackToStorefront }) {
                   <label className="block mb-1">Discount Percentage (%) *</label>
                   <input
                     type="number"
+                    step="1"
                     min="1"
                     max="90"
                     required
                     placeholder="e.g. 15"
                     value={couponFormData.discountPercentage}
                     onChange={(e) => setCouponFormData({ ...couponFormData, discountPercentage: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-bold outline-none focus:border-[#061F75]"
                   />
                 </div>
+
                 <div>
-                  <label className="block mb-1">Min Duration (Days)</label>
+                  <label className="block mb-1">Min Duration (Days) *</label>
                   <input
                     type="number"
+                    step="1"
                     min="1"
                     required
-                    placeholder="e.g. 3"
+                    placeholder="e.g. 1"
                     value={couponFormData.minDays}
                     onChange={(e) => setCouponFormData({ ...couponFormData, minDays: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
@@ -1328,7 +1595,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                 />
               </div>
 
-              <div className="pt-3 flex gap-3">
+              <div className="pt-4 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setCouponModalOpen(false)}
@@ -1341,7 +1608,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                   disabled={savingCoupon}
                   className="w-1/2 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
-                  {savingCoupon ? 'Deploying...' : 'Deploy Coupon'}
+                  {savingCoupon ? 'Creating...' : 'Activate Promo Code'}
                 </button>
               </div>
             </form>
@@ -1356,7 +1623,7 @@ function AdminPortalContent({ onBackToStorefront }) {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-5">
               <div>
                 <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
-                  NETWORK EXPANSION
+                  AIRPORT NETWORK
                 </span>
                 <h3 className="text-lg font-black text-[#061F75]">Add New Served Airport</h3>
               </div>
@@ -1382,13 +1649,15 @@ function AdminPortalContent({ onBackToStorefront }) {
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-black uppercase outline-none focus:border-[#061F75]"
                   />
                 </div>
+
                 <div>
                   <label className="block mb-1">Dropoff Fee (£)</label>
                   <input
                     type="number"
                     step="0.50"
+                    min="0"
                     required
-                    placeholder="e.g. 5.00"
+                    placeholder="5.00"
                     value={airportFormData.terminalDropoffFee}
                     onChange={(e) => setAirportFormData({ ...airportFormData, terminalDropoffFee: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
@@ -1397,7 +1666,7 @@ function AdminPortalContent({ onBackToStorefront }) {
               </div>
 
               <div>
-                <label className="block mb-1">Airport Official Name *</label>
+                <label className="block mb-1">Airport Name *</label>
                 <input
                   type="text"
                   required
@@ -1413,14 +1682,14 @@ function AdminPortalContent({ onBackToStorefront }) {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Cardiff / South Wales"
+                  placeholder="e.g. Cardiff, Wales"
                   value={airportFormData.city}
                   onChange={(e) => setAirportFormData({ ...airportFormData, city: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
                 />
               </div>
 
-              <div className="pt-3 flex gap-3">
+              <div className="pt-4 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setAirportModalOpen(false)}
@@ -1441,16 +1710,22 @@ function AdminPortalContent({ onBackToStorefront }) {
         </div>
       )}
 
-      {/* MODAL: CUSTOMER PROFILE & ANPR VEHICLE DETAILS */}
+      {/* MODAL: CUSTOMER DOSSIER & OPERATIONS / INVOICE CONTROL CENTER */}
       {selectedCustomerOrder && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+          <div className="bg-white rounded-3xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6 sm:p-8 shadow-2xl border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-5">
               <div>
                 <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
-                  Customer &amp; Vehicle Dossier
+                  OPERATIONS &amp; INVOICE DOSSIER
                 </span>
-                <h3 className="text-base font-bold text-slate-900">{selectedCustomerOrder.customerName || 'Customer Record'}</h3>
+                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <span>{selectedCustomerOrder.customerName || 'Customer Record'}</span>
+                  <span className="text-xs font-mono font-bold text-[#061F75] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {selectedCustomerOrder.id}
+                  </span>
+                </h3>
               </div>
               <button
                 onClick={() => setSelectedCustomerOrder(null)}
@@ -1460,64 +1735,287 @@ function AdminPortalContent({ onBackToStorefront }) {
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              {adminEmailStatus && (
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[#061F75] font-bold flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-[#061F75]" />
-                  <span>{adminEmailStatus}</span>
-                </div>
-              )}
+            {/* Email Status Notification */}
+            {adminEmailStatus && (
+              <div className="mb-4 p-3 rounded-2xl bg-blue-50 border border-blue-200 text-[#061F75] font-bold text-xs flex items-center gap-2">
+                <Mail className="w-4 h-4 text-[#061F75]" />
+                <span>{adminEmailStatus}</span>
+              </div>
+            )}
 
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Mail className="w-4 h-4 text-[#061F75]" />
-                  <span>{selectedCustomerOrder.customerEmail}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
+              {/* Left Column: Customer Profile & Vehicle Operations Tracker */}
+              <div className="space-y-4">
+                {/* Contact Card */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="font-bold text-slate-900 text-xs mb-1 flex items-center justify-between">
+                    <span>Passenger Information</span>
+                    <span className="text-[10px] uppercase font-mono bg-blue-100 text-[#061F75] px-2 py-0.5 rounded">
+                      Airport: {selectedCustomerOrder.airport}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Mail className="w-4 h-4 text-[#061F75] shrink-0" />
+                    <span>{selectedCustomerOrder.customerEmail}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{selectedCustomerOrder.customerPhone || 'Not provided'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Car className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>ANPR Plate: <strong className="font-mono bg-amber-100 px-2 py-0.5 rounded border border-amber-300 text-slate-900">{selectedCustomerOrder.vehicleReg || 'N/A'}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Plane className="w-4 h-4 text-[#061F75] shrink-0" />
+                    <span>Flight: <strong>{selectedCustomerOrder.flightNumber || 'None specified'}</strong></span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Phone className="w-4 h-4 text-emerald-600" />
-                  <span>{selectedCustomerOrder.customerPhone || 'Not provided'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Car className="w-4 h-4 text-amber-500" />
-                  <span>ANPR Plate: <strong className="font-mono bg-amber-100 px-2 py-0.5 rounded border border-amber-300">{selectedCustomerOrder.vehicleReg || 'N/A'}</strong></span>
-                </div>
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Plane className="w-4 h-4 text-[#061F75]" />
-                  <span>Flight Number: <strong>{selectedCustomerOrder.flightNumber || 'None specified'}</strong></span>
+
+                {/* Operations Tracker Card */}
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <span className="font-extrabold text-[#061F75] text-xs flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-[#061F75]" />
+                      <span>Yard &amp; Vehicle Status Tracker</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">Live Yard Synchronization</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                      Vehicle Lifecycle Status
+                    </label>
+                    <select
+                      value={operationsForm.parkingStatus}
+                      onChange={(e) => setOperationsForm({ ...operationsForm, parkingStatus: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-[#061F75]"
+                    >
+                      <option value="booked">Awaiting Arrival (Customer Traveling)</option>
+                      <option value="vehicle_received">Vehicle Checked-In (Keys Handed Over)</option>
+                      <option value="parked_compound">Safely Parked in Compound Bay</option>
+                      <option value="ready_for_return">Dispatched to Terminal Forecourt for Pickup</option>
+                      <option value="picked_up">Vehicle Picked Up &amp; Customer Departed</option>
+                      <option value="cancelled">Cancelled / No Show</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                        Compound Bay
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Bay A-14"
+                        value={operationsForm.compoundBay}
+                        onChange={(e) => setOperationsForm({ ...operationsForm, compoundBay: e.target.value.toUpperCase() })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold font-mono outline-none focus:border-[#061F75]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                        Key Tag Locker #
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Tag #204"
+                        value={operationsForm.keyTagNumber}
+                        onChange={(e) => setOperationsForm({ ...operationsForm, keyTagNumber: e.target.value.toUpperCase() })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold font-mono outline-none focus:border-[#061F75]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                      Vehicle Mileage In (Check-in)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 45,210 miles"
+                      value={operationsForm.mileageIn}
+                      onChange={(e) => setOperationsForm({ ...operationsForm, mileageIn: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-[#061F75]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                      Add Event Log / Handover Note
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Keys safely tagged in locker 12"
+                      value={operationsForm.operatorNote}
+                      onChange={(e) => setOperationsForm({ ...operationsForm, operatorNote: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs outline-none focus:border-[#061F75]"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={savingOperations}
+                    onClick={() => handleSaveOperationsTracker(selectedCustomerOrder.id)}
+                    className="w-full py-2.5 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    {savingOperations ? 'Updating Operations...' : 'Save Operations Status'}
+                  </button>
+
+                  {/* Activity History Audit Trail */}
+                  {Array.isArray(selectedCustomerOrder.statusHistory) && selectedCustomerOrder.statusHistory.length > 0 && (
+                    <div className="pt-2 border-t border-slate-100">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 block mb-2 flex items-center gap-1">
+                        <History className="w-3 h-3 text-slate-400" />
+                        Audit History Timeline
+                      </span>
+                      <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                        {selectedCustomerOrder.statusHistory.map((item, idx) => (
+                          <div key={idx} className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-[10px] space-y-0.5">
+                            <div className="flex justify-between font-bold text-slate-800">
+                              <span className="uppercase text-[#061F75]">{item.status}</span>
+                              <span className="text-slate-400 font-mono">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            <p className="text-slate-600">{item.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 text-slate-700 space-y-1.5">
-                <div className="flex justify-between">
-                  <span>Booking Reference:</span>
-                  <strong className="font-mono text-[#061F75]">{selectedCustomerOrder.id}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>Package:</span>
-                  <span className="text-right max-w-[200px] truncate">{selectedCustomerOrder.serviceName}</span>
-                </div>
-                <div className="flex justify-between font-black text-sm text-[#061F75] pt-1.5 border-t border-blue-200">
-                  <span>Total Amount Paid:</span>
-                  <span>£{formatPrice(selectedCustomerOrder.totalCharged)}</span>
-                </div>
-              </div>
+              {/* Right Column: Invoice, Service Charges (Add/Subtract), and Dispatch */}
+              <div className="space-y-4">
+                {/* Invoice Breakdown Card */}
+                <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-slate-700 space-y-2">
+                  <div className="flex items-center justify-between pb-2 border-b border-blue-200/80">
+                    <span className="font-extrabold text-[#061F75] text-xs flex items-center gap-1.5">
+                      <Receipt className="w-4 h-4 text-[#061F75]" />
+                      <span>Invoice &amp; Surcharges Breakdown</span>
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                      Prepaid
+                    </span>
+                  </div>
 
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleAdminResendEmail(selectedCustomerOrder)}
-                  className="w-1/2 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#061F75] border border-blue-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Email Voucher</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCustomerOrder(null)}
-                  className="w-1/2 py-2.5 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-bold text-xs cursor-pointer transition-colors"
-                >
-                  Close Dossier
-                </button>
+                  <div className="space-y-1.5 font-mono text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Base Parking Rate:</span>
+                      <strong className="text-slate-900">
+                        £{(parseFloat(selectedCustomerOrder.totalCharged || 0) - parseFloat(selectedCustomerOrder.bookingFee || 1.95) - (Array.isArray(selectedCustomerOrder.serviceCharges) ? selectedCustomerOrder.serviceCharges.reduce((acc, c) => acc + parseFloat(c.amount || 0), 0) : 0)).toFixed(2)}
+                      </strong>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Booking &amp; Administration Fee:</span>
+                      <strong className="text-slate-900">£{formatPrice(selectedCustomerOrder.bookingFee || platformSettings.bookingFee || 1.95)}</strong>
+                    </div>
+
+                    {/* Surcharges and Adjustments List */}
+                    {Array.isArray(selectedCustomerOrder.serviceCharges) && selectedCustomerOrder.serviceCharges.map((sc) => (
+                      <div key={sc.id} className="flex justify-between items-center py-1 border-t border-blue-200/60 font-sans">
+                        <div>
+                          <span className="font-bold text-slate-800">{sc.description}</span>
+                          <span className="text-[10px] text-slate-400 block font-mono">Added: {new Date(sc.addedAt).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`font-mono font-bold ${sc.amount >= 0 ? 'text-[#061F75]' : 'text-emerald-700'}`}>
+                            {sc.amount >= 0 ? '+' : ''}£{parseFloat(sc.amount).toFixed(2)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCharge(selectedCustomerOrder.id, sc.id)}
+                            className="p-1 text-red-500 hover:text-red-700 transition-colors cursor-pointer"
+                            title="Remove surcharge"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex justify-between font-black text-sm text-[#061F75] pt-2 border-t-2 border-blue-300">
+                      <span>Total Amount Prepaid:</span>
+                      <span className="text-emerald-700 font-mono text-base">£{formatPrice(selectedCustomerOrder.totalCharged)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form to Add or Subtract Surcharge / Service Fee */}
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
+                  <div className="font-extrabold text-[#061F75] text-xs flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <PlusCircle className="w-4 h-4 text-[#C8102E]" />
+                      <span>Add / Subtract Surcharge or Service Fee</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">Updates Customer Voucher</span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500">
+                    Add optional service items (e.g. Valet Wash +£25.00, EV Fast Charge +£10.00, Out of Hours +£15.00) or subtract goodwill discount (-£10.00).
+                  </p>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                        Charge Description *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Valet Exterior Wash or Out of Hours Fee"
+                        value={newChargeForm.description}
+                        onChange={(e) => setNewChargeForm({ ...newChargeForm, description: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:border-[#061F75]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">
+                        Amount in £ (Positive to Add, Negative to Subtract) *
+                      </label>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-3 text-slate-500 font-bold text-xs">£</span>
+                        <input
+                          type="number"
+                          step="0.50"
+                          placeholder="e.g. 15.00 or -10.00"
+                          value={newChargeForm.amount}
+                          onChange={(e) => setNewChargeForm({ ...newChargeForm, amount: e.target.value })}
+                          className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold font-mono outline-none focus:border-[#061F75]"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={addingCharge}
+                      onClick={() => handleAddCharge(selectedCustomerOrder.id)}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] text-white font-extrabold text-xs transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      {addingCharge ? 'Applying Adjustment...' : '+ Apply Adjustment to Invoice'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Dispatch Controls */}
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdminResendEmail(selectedCustomerOrder)}
+                    className="w-1/2 py-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#061F75] border border-blue-200 font-extrabold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Email Updated Voucher</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomerOrder(null)}
+                    className="w-1/2 py-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs cursor-pointer transition-colors"
+                  >
+                    Close Dossier
+                  </button>
+                </div>
               </div>
             </div>
           </div>
