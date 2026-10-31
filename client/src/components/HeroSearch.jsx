@@ -8,12 +8,18 @@ export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirpo
   const [fromTime, setFromTime] = useState('10:00');
   const [toDate, setToDate] = useState('2026-11-14');
   const [toTime, setToTime] = useState('12:00');
-  const [promoCode, setPromoCode] = useState('apd10');
+  const [promoCode, setPromoCode] = useState('');
   const [parkingType, setParkingType] = useState('all');
 
   useEffect(() => {
     getAirports()
-      .then((data) => setAirports(data || []))
+      .then((data) => {
+        const activeList = data || [];
+        setAirports(activeList);
+        if (activeList.length > 0 && !activeList.some(a => a.code === selectedAirport)) {
+          setSelectedAirport(activeList[0].code);
+        }
+      })
       .catch((err) => console.error('Failed to load airports', err));
   }, []);
 

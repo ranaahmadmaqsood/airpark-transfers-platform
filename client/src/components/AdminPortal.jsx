@@ -2,11 +2,12 @@ import React, { useState, useEffect, Component } from 'react';
 import { 
   getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus,
   authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots,
-  getCoupons, saveCoupon, removeCoupon, toggleCouponStatus
+  getCoupons, saveCoupon, removeCoupon, toggleCouponStatus,
+  getAllAdminAirports, saveAirport, toggleAirportStatus, removeAirport, dispatchVoucherEmail
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
-  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut, Zap, Tag, Download, Filter, Search, TrendingUp, Check, Percent
+  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut, Zap, Tag, Download, Filter, Search, TrendingUp, Check, Percent, Send
 } from 'lucide-react';
 
 // Error Boundary to prevent any blank screen crashes
@@ -71,10 +72,11 @@ function AdminPortalContent({ onBackToStorefront }) {
   const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Portal tabs & data
-  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'coupons'
+  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'coupons' | 'airports'
   const [lots, setLots] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [coupons, setCoupons] = useState([]);
+  const [airports, setAirports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [realtimeActive, setRealtimeActive] = useState(false);
 
@@ -111,8 +113,20 @@ function AdminPortalContent({ onBackToStorefront }) {
   });
   const [savingCoupon, setSavingCoupon] = useState(false);
 
+  // Modal states for Airport Add
+  const [airportModalOpen, setAirportModalOpen] = useState(false);
+  const [airportFormData, setAirportFormData] = useState({
+    code: '',
+    name: '',
+    city: '',
+    terminalDropoffFee: '5.00',
+    isActive: true
+  });
+  const [savingAirport, setSavingAirport] = useState(false);
+
   // Selected customer profile view
   const [selectedCustomerOrder, setSelectedCustomerOrder] = useState(null);
+  const [adminEmailStatus, setAdminEmailStatus] = useState(null);
 
   useEffect(() => {
     if (operatorUser) {
@@ -171,14 +185,16 @@ function AdminPortalContent({ onBackToStorefront }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [lotsData, bookingsData, couponsData] = await Promise.all([
+      const [lotsData, bookingsData, couponsData, airportsData] = await Promise.all([
         getAdminLots(),
         getAdminBookings(),
-        getCoupons()
+        getCoupons(),
+        getAllAdminAirports()
       ]);
       setLots(Array.isArray(lotsData) ? lotsData : []);
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
       setCoupons(Array.isArray(couponsData) ? couponsData : []);
+      setAirports(Array.isArray(airportsData) ? airportsData : []);
       setRealtimeActive(true);
     } catch (err) {
       console.error('Failed to load admin data', err);
@@ -293,6 +309,59 @@ function AdminPortalContent({ onBackToStorefront }) {
     }
   };
 
+  // Save new Airport in real-time
+  const handleSaveAirport = async (e) => {
+    e.preventDefault();
+    setSavingAirport(true);
+    try {
+      await saveAirport(airportFormData);
+      await fetchData();
+      setAirportModalOpen(false);
+      setAirportFormData({ code: '', name: '', city: '', terminalDropoffFee: '5.00', isActive: true });
+    } catch (err) {
+      alert('Error saving airport: ' + err.message);
+    } finally {
+      setSavingAirport(false);
+    }
+  };
+
+  // Toggle Airport Active / Disabled
+  const handleToggleAirport = async (code, currentStatus) => {
+    try {
+      await toggleAirportStatus(code, !currentStatus);
+      setAirports(prev => prev.map(a => a.code === code ? { ...a, isActive: !currentStatus } : a));
+    } catch (err) {
+      alert('Error toggling airport status: ' + err.message);
+    }
+  };
+
+  // Delete Airport in real-time
+  const handleDeleteAirport = async (code) => {
+    if (!window.confirm(`Are you sure you want to remove airport "${code}" from the database?`)) return;
+    try {
+      await removeAirport(code);
+      setAirports(prev => prev.filter(a => a.code !== code));
+    } catch (err) {
+      alert('Error deleting airport: ' + err.message);
+    }
+  };
+
+  // Resend email to customer from Admin
+  const handleAdminResendEmail = async (booking) => {
+    setAdminEmailStatus('Dispatching email via Resend...');
+    try {
+      const res = await dispatchVoucherEmail(booking);
+      if (res && res.success) {
+        setAdminEmailStatus(`✓ Dispatched to ${res.recipient || booking.customerEmail}`);
+      } else {
+        setAdminEmailStatus(`Notice: ${res?.message || 'Queued'}`);
+      }
+      setTimeout(() => setAdminEmailStatus(null), 5000);
+    } catch (err) {
+      setAdminEmailStatus('Dispatch failed: ' + err.message);
+    }
+  };
+
   // Export Bookings ANPR Manifest to CSV
   const handleExportCSV = () => {
     if (safeBookings.length === 0) {
@@ -328,6 +397,7 @@ function AdminPortalContent({ onBackToStorefront }) {
   const safeLots = Array.isArray(lots) ? lots : [];
   const safeBookings = Array.isArray(bookings) ? bookings : [];
   const safeCoupons = Array.isArray(coupons) ? coupons : [];
+  const safeAirports = Array.isArray(airports) ? airports : [];
 
   const formatPrice = (val) => {
     const num = parseFloat(val);
@@ -537,7 +607,7 @@ function AdminPortalContent({ onBackToStorefront }) {
 
       {/* Tab Navigation Strip */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-sm">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setActiveTab('lots')}
             className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
@@ -572,6 +642,18 @@ function AdminPortalContent({ onBackToStorefront }) {
           >
             <Tag className="w-4 h-4 text-amber-400" />
             <span>Coupons &amp; Promo Codes ({safeCoupons.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('airports')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+              activeTab === 'airports'
+                ? 'bg-[#061F75] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Plane className="w-4 h-4 text-amber-400" />
+            <span>Airports &amp; Terminals ({safeAirports.length})</span>
           </button>
         </div>
 
@@ -647,17 +729,27 @@ function AdminPortalContent({ onBackToStorefront }) {
                 {/* Airport Quick Filter Strip */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-bold text-slate-600">
                   <span className="text-[11px] text-slate-400 uppercase tracking-wider mr-1">Airport:</span>
-                  {['ALL', 'LHR', 'LGW', 'MAN', 'STN', 'LTN', 'BHX', 'BRS', 'LPL', 'SOU'].map((ap) => (
+                  <button
+                    onClick={() => setLotAirportFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-xl cursor-pointer transition-colors ${
+                      lotAirportFilter === 'ALL'
+                        ? 'bg-[#061F75] text-white'
+                        : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    ALL
+                  </button>
+                  {safeAirports.filter(a => a.isActive).map((ap) => (
                     <button
-                      key={ap}
-                      onClick={() => setLotAirportFilter(ap)}
+                      key={ap.code}
+                      onClick={() => setLotAirportFilter(ap.code)}
                       className={`px-3 py-1.5 rounded-xl cursor-pointer transition-colors ${
-                        lotAirportFilter === ap
+                        lotAirportFilter === ap.code
                           ? 'bg-[#061F75] text-white'
                           : 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700'
                       }`}
                     >
-                      {ap}
+                      {ap.code}
                     </button>
                   ))}
                 </div>
@@ -763,13 +855,9 @@ function AdminPortalContent({ onBackToStorefront }) {
                       className="bg-slate-50 border border-slate-200 text-xs font-bold rounded-xl px-3 py-2 outline-none"
                     >
                       <option value="ALL">All Airports</option>
-                      <option value="LHR">Heathrow (LHR)</option>
-                      <option value="LGW">Gatwick (LGW)</option>
-                      <option value="MAN">Manchester (MAN)</option>
-                      <option value="STN">Stansted (STN)</option>
-                      <option value="LTN">Luton (LTN)</option>
-                      <option value="BHX">Birmingham (BHX)</option>
-                      <option value="BRS">Bristol (BRS)</option>
+                      {safeAirports.map(ap => (
+                        <option key={ap.code} value={ap.code}>{ap.name} ({ap.code})</option>
+                      ))}
                     </select>
 
                     <select
@@ -848,7 +936,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                               </td>
                               <td className="py-4 px-5 text-right">
                                 <button
-                                  onClick={() => setSelectedCustomerOrder(b)}
+                                  onClick={() => { setSelectedCustomerOrder(b); setAdminEmailStatus(null); }}
                                   className="p-2 rounded-xl bg-slate-100 text-[#061F75] hover:bg-slate-200 transition-colors cursor-pointer"
                                   title="View Complete Customer Dossier"
                                 >
@@ -872,7 +960,7 @@ function AdminPortalContent({ onBackToStorefront }) {
                   <div>
                     <h2 className="text-lg font-black text-[#061F75]">Promotional Coupon Codes</h2>
                     <p className="text-xs text-slate-500">
-                      Create, toggle, and remove discount codes. Codes apply instantly on customer checkout quotes in real time.
+                      Create, toggle, and remove discount codes. Disabled codes are immediately rejected on storefront quotes.
                     </p>
                   </div>
                   <button
@@ -952,6 +1040,94 @@ function AdminPortalContent({ onBackToStorefront }) {
                 </div>
               </div>
             )}
+
+            {/* TAB 4: AIRPORTS & TERMINALS */}
+            {activeTab === 'airports' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                  <div>
+                    <h2 className="text-lg font-black text-[#061F75]">Served UK Airports &amp; Port Locations</h2>
+                    <p className="text-xs text-slate-500">
+                      Add new airports or disable airports you do not currently serve. Disabled airports are immediately hidden from customer search.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setAirportModalOpen(true)}
+                    className="px-5 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-extrabold transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add New Airport</span>
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-4 px-5">IATA Code</th>
+                          <th className="py-4 px-5">Airport Name</th>
+                          <th className="py-4 px-5">City / Region</th>
+                          <th className="py-4 px-5">Terminal Dropoff Fee</th>
+                          <th className="py-4 px-5">Status</th>
+                          <th className="py-4 px-5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {safeAirports.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="py-12 text-center text-slate-400">
+                              No airports loaded. Click &quot;+ Add New Airport&quot; above to add one.
+                            </td>
+                          </tr>
+                        ) : (
+                          safeAirports.map((a) => (
+                            <tr key={a.code} className="hover:bg-blue-50/40 transition-colors">
+                              <td className="py-4 px-5">
+                                <span className="bg-blue-100 text-[#061F75] px-3 py-1.5 rounded-lg font-mono font-black text-xs border border-blue-200">
+                                  {a.code}
+                                </span>
+                              </td>
+                              <td className="py-4 px-5 font-bold text-slate-900 text-sm">
+                                {a.name}
+                              </td>
+                              <td className="py-4 px-5 text-slate-600 font-medium">
+                                {a.city}
+                              </td>
+                              <td className="py-4 px-5 font-bold text-slate-800">
+                                £{formatPrice(a.terminalDropoffFee)}
+                              </td>
+                              <td className="py-4 px-5">
+                                <button
+                                  onClick={() => handleToggleAirport(a.code, a.isActive)}
+                                  className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer border transition-colors ${
+                                    a.isActive
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                      : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                                  }`}
+                                  title="Click to toggle active status"
+                                >
+                                  {a.isActive ? '● Active (Serving)' : '○ Disabled (Hidden)'}
+                                </button>
+                              </td>
+                              <td className="py-4 px-5 text-right">
+                                <button
+                                  onClick={() => handleDeleteAirport(a.code)}
+                                  className="p-2 rounded-xl bg-red-50 text-[#C8102E] hover:bg-red-100 transition-colors cursor-pointer"
+                                  title="Delete Airport"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>
@@ -986,15 +1162,9 @@ function AdminPortalContent({ onBackToStorefront }) {
                     onChange={(e) => setLotFormData({ ...lotFormData, airportCode: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                   >
-                    <option value="LHR">Heathrow (LHR)</option>
-                    <option value="LGW">Gatwick (LGW)</option>
-                    <option value="MAN">Manchester (MAN)</option>
-                    <option value="STN">Stansted (STN)</option>
-                    <option value="LTN">Luton (LTN)</option>
-                    <option value="BHX">Birmingham (BHX)</option>
-                    <option value="BRS">Bristol (BRS)</option>
-                    <option value="LPL">Liverpool (LPL)</option>
-                    <option value="SOU">Southampton Port (SOU)</option>
+                    {safeAirports.map(a => (
+                      <option key={a.code} value={a.code}>{a.name} ({a.code})</option>
+                    ))}
                   </select>
                 </div>
 
@@ -1179,6 +1349,98 @@ function AdminPortalContent({ onBackToStorefront }) {
         </div>
       )}
 
+      {/* MODAL: ADD NEW AIRPORT */}
+      {airportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 sm:p-8 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-5">
+              <div>
+                <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
+                  NETWORK EXPANSION
+                </span>
+                <h3 className="text-lg font-black text-[#061F75]">Add New Served Airport</h3>
+              </div>
+              <button
+                onClick={() => setAirportModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAirport} className="space-y-4 text-xs font-bold text-slate-700">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-1">IATA Code (3 Letters) *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    placeholder="e.g. CWL"
+                    value={airportFormData.code}
+                    onChange={(e) => setAirportFormData({ ...airportFormData, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-black uppercase outline-none focus:border-[#061F75]"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-1">Dropoff Fee (£)</label>
+                  <input
+                    type="number"
+                    step="0.50"
+                    required
+                    placeholder="e.g. 5.00"
+                    value={airportFormData.terminalDropoffFee}
+                    onChange={(e) => setAirportFormData({ ...airportFormData, terminalDropoffFee: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block mb-1">Airport Official Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Cardiff International Airport"
+                  value={airportFormData.name}
+                  onChange={(e) => setAirportFormData({ ...airportFormData, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1">City / Region *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Cardiff / South Wales"
+                  value={airportFormData.city}
+                  onChange={(e) => setAirportFormData({ ...airportFormData, city: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 outline-none focus:border-[#061F75]"
+                />
+              </div>
+
+              <div className="pt-3 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAirportModalOpen(false)}
+                  className="w-1/2 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingAirport}
+                  className="w-1/2 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {savingAirport ? 'Saving...' : 'Add Airport'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: CUSTOMER PROFILE & ANPR VEHICLE DETAILS */}
       {selectedCustomerOrder && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
@@ -1199,6 +1461,13 @@ function AdminPortalContent({ onBackToStorefront }) {
             </div>
 
             <div className="space-y-3 text-xs">
+              {adminEmailStatus && (
+                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[#061F75] font-bold flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-[#061F75]" />
+                  <span>{adminEmailStatus}</span>
+                </div>
+              )}
+
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex items-center gap-2 text-slate-700">
                   <Mail className="w-4 h-4 text-[#061F75]" />
@@ -1233,12 +1502,23 @@ function AdminPortalContent({ onBackToStorefront }) {
                 </div>
               </div>
 
-              <button
-                onClick={() => setSelectedCustomerOrder(null)}
-                className="w-full mt-3 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-bold text-xs cursor-pointer transition-colors"
-              >
-                Close Dossier
-              </button>
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAdminResendEmail(selectedCustomerOrder)}
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#061F75] border border-blue-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Email Voucher</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomerOrder(null)}
+                  className="w-1/2 py-2.5 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-bold text-xs cursor-pointer transition-colors"
+                >
+                  Close Dossier
+                </button>
+              </div>
             </div>
           </div>
         </div>

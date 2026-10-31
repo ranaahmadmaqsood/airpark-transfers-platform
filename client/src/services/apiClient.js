@@ -111,14 +111,20 @@ export function subscribeToParkingLots(callback) {
 }
 
 // --- Public Endpoints ---
-export async function getAirports() {
+export async function getAirports(onlyActive = true) {
   try {
-    const { data, error } = await supabase.from('airports').select('*');
+    let query = supabase.from('airports').select('*').order('name');
+    if (onlyActive) {
+      query = query.eq('is_active', true);
+    }
+    const { data, error } = await query;
     if (!error && data && data.length > 0) {
       return data;
     }
-  } catch (e) {}
-  return AIRPORTS;
+  } catch (e) {
+    console.error('Failed to get airports from database', e);
+  }
+  return AIRPORTS.filter(a => ['LHR', 'LGW', 'MAN', 'STN', 'LTN', 'BHX', 'BRS', 'LPL', 'SOU', 'EDI', 'GLA', 'EMA', 'LBA', 'NCL'].includes(a.code));
 }
 
 export async function searchParkingLots(params) {
@@ -178,20 +184,16 @@ export async function searchParkingLots(params) {
         .from('coupons')
         .select('*')
         .eq('code', cleanPromo)
-        .eq('is_active', true)
         .maybeSingle();
 
-      if (couponData && diffDays >= (couponData.min_days || 1)) {
-        discountPct = (parseFloat(couponData.discount_percentage) || 10) / 100;
-      } else if (!couponData) {
-        if (cleanPromo === 'APD10' || cleanPromo === 'DEALS10') discountPct = 0.10;
-        else if (cleanPromo === 'WLCME' || cleanPromo === 'WELCOME15') discountPct = 0.15;
-        else if (cleanPromo === 'DEALS20' || cleanPromo === 'SAVE20') discountPct = 0.20;
+      if (couponData && couponData.is_active && diffDays >= (couponData.min_days || 1)) {
+        discountPct = (parseFloat(couponData.discount_percentage) || 0) / 100;
+      } else {
+        // Disabled coupon, minimum days not met, or non-existent coupon: strictly ZERO discount
+        discountPct = 0;
       }
     } catch (e) {
-      if (cleanPromo === 'APD10' || cleanPromo === 'DEALS10') discountPct = 0.10;
-      else if (cleanPromo === 'WLCME' || cleanPromo === 'WELCOME15') discountPct = 0.15;
-      else if (cleanPromo === 'DEALS20' || cleanPromo === 'SAVE20') discountPct = 0.20;
+      discountPct = 0;
     }
   }
 
@@ -410,18 +412,18 @@ export async function getAdminLots() {
 
 export async function saveAdminLot(lotFormData, editingId = null) {
   const baseRate = parseFloat(lotFormData.baseDailyRate) || 5.50;
-  const netRate = parseFloat((baseRate * 0.70).toFixed(2));
+  const netRate = isNaN(baseRate) ? 3.85 : parseFloat((baseRate * 0.70).toFixed(2));
   const commissionRate = 0.30;
 
   const lotPayload = {
-    airport_code: lotFormData.airportCode,
-    name: lotFormData.name,
-    operator_name: lotFormData.operatorName || 'Airport Parking Deals Express',
-    type: lotFormData.type,
+    airport_code: (lotFormData.airportCode || 'LHR').trim().toUpperCase(),
+    name: (lotFormData.name || 'Secure Airport Parking').trim(),
+    operator_name: (lotFormData.operatorName || 'Airport Parking Deals Express').trim(),
+    type: lotFormData.type || 'meet_and_greet',
     base_daily_rate: baseRate,
-    operator_net_rate: netRate,
+    operator_net_rate: netRate || 3.85,
     commission_rate: commissionRate,
-    yard_location: lotFormData.yardLocation,
+    yard_location: (lotFormData.yardLocation || 'Perimeter Compound Yard').trim(),
     transfer_duration_minutes: parseInt(lotFormData.transferDurationMinutes, 10) || 0,
     transfer_frequency_minutes: parseInt(lotFormData.transferFrequencyMinutes, 10) || 0,
     distance_miles: parseFloat(lotFormData.distanceMiles) || 0.1,
@@ -649,6 +651,89 @@ export async function toggleCouponStatus(code, isActive) {
     return data[0];
   } catch (e) {
     console.error('Database coupon toggle error:', e);
+    throw e;
+  }
+}
+
+// --- Live Airport Management Endpoints ---
+export async function getAllAdminAirports() {
+  try {
+    const { data, error } = await supabase
+      .from('airports')
+      .select('*')
+      .order('name');
+
+    if (!error && data) {
+      return data.map(a => ({
+        code: a.code,
+        name: a.name,
+        city: a.city,
+        terminalDropoffFee: parseFloat(a.terminal_dropoff_fee || 5.00),
+        terminals: a.terminals || ['Main Terminal'],
+        isActive: a.is_active !== false
+      }));
+    }
+  } catch (e) {
+    console.error('Failed to load admin airports', e);
+  }
+  return [];
+}
+
+export async function saveAirport(airportData) {
+  const code = (airportData.code || '').trim().toUpperCase();
+  if (!code) throw new Error('Airport IATA code is required');
+
+  const payload = {
+    code,
+    name: airportData.name,
+    city: airportData.city || 'United Kingdom',
+    country: 'UK',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: Array.isArray(airportData.terminals) ? airportData.terminals : ['Main Terminal'],
+    terminal_dropoff_fee: parseFloat(airportData.terminalDropoffFee) || 5.00,
+    is_active: airportData.isActive !== false
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('airports')
+      .upsert(payload, { onConflict: 'code' })
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database save airport error:', e);
+    throw e;
+  }
+}
+
+export async function toggleAirportStatus(code, isActive) {
+  const cleanCode = (code || '').trim().toUpperCase();
+  try {
+    const { data, error } = await supabase
+      .from('airports')
+      .update({ is_active: isActive })
+      .eq('code', cleanCode)
+      .select();
+
+    if (error) throw error;
+    return data[0];
+  } catch (e) {
+    console.error('Database toggle airport error:', e);
+    throw e;
+  }
+}
+
+export async function removeAirport(code) {
+  const cleanCode = (code || '').trim().toUpperCase();
+  try {
+    const { error } = await supabase.from('airports').delete().eq('code', cleanCode);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error('Database delete airport error:', e);
     throw e;
   }
 }

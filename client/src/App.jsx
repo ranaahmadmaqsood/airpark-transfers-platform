@@ -23,7 +23,7 @@ export default function App() {
     fromTime: '10:00',
     toDate: '2026-11-14',
     toTime: '12:00',
-    promoCode: 'apd10',
+    promoCode: '',
     type: 'all',
     sortBy: 'recommended'
   });
