@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createNewBooking } from '../services/apiClient';
 import { X, ShieldCheck, Lock, CreditCard, Calendar, Plane, MapPin, CheckCircle } from 'lucide-react';
 
-export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = 'apd10' }) {
+export default function BookingModal({ item, onClose, onBookingSuccess, promoCode = '' }) {
   const [formData, setFormData] = useState({
     customerName: '',
     customerEmail: '',
@@ -80,7 +80,7 @@ export default function BookingModal({ item, onClose, onBookingSuccess, promoCod
         </div>
 
         {/* Selected Service Card */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 mb-6">
             <div className="flex justify-between items-start mb-2">
               <div>

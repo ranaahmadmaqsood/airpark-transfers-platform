@@ -533,6 +533,9 @@ export async function changeBookingStatus(bookingId, newStatus) {
 export async function updateBookingDetails(bookingId, updates) {
   const cleanId = (bookingId || '').trim().toUpperCase();
   const dbPayload = {};
+  if (updates.customerName !== undefined) dbPayload.customer_name = updates.customerName.trim();
+  if (updates.customerEmail !== undefined) dbPayload.customer_email = updates.customerEmail.trim().toLowerCase();
+  if (updates.customerPhone !== undefined) dbPayload.customer_phone = updates.customerPhone.trim();
   if (updates.vehicleReg !== undefined) dbPayload.vehicle_reg = updates.vehicleReg.trim().toUpperCase();
   if (updates.flightNumber !== undefined) dbPayload.flight_number = updates.flightNumber.trim().toUpperCase();
 
@@ -556,6 +559,9 @@ export async function updateBookingDetails(bookingId, updates) {
       if ((b.id || '').toUpperCase() === cleanId) {
         return {
           ...b,
+          customerName: updates.customerName !== undefined ? updates.customerName.trim() : b.customerName,
+          customerEmail: updates.customerEmail !== undefined ? updates.customerEmail.trim().toLowerCase() : b.customerEmail,
+          customerPhone: updates.customerPhone !== undefined ? updates.customerPhone.trim() : b.customerPhone,
           vehicleReg: updates.vehicleReg !== undefined ? updates.vehicleReg.trim().toUpperCase() : b.vehicleReg,
           flightNumber: updates.flightNumber !== undefined ? updates.flightNumber.trim().toUpperCase() : b.flightNumber
         };

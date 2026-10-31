@@ -98,7 +98,7 @@ export default function ParkingCard({ lot, onSelect }) {
 
       {/* Pricing & CTA Block */}
       <div className="border-t border-slate-200 pt-4 mt-2">
-        <div className="flex items-end justify-between mb-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-3 mb-3">
           <div>
             {/* Strikethrough gate price & discount pill */}
             <div className="flex items-center gap-2 mb-0.5">
@@ -129,7 +129,7 @@ export default function ParkingCard({ lot, onSelect }) {
           {/* Union Jack Red CTA */}
           <button
             onClick={() => onSelect(lot)}
-            className="px-6 py-3 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm shadow-md shadow-red-700/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 uppercase tracking-wider"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm shadow-md shadow-red-700/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5 uppercase tracking-wider shrink-0"
           >
             <span>Book Now</span>
             <ArrowRight className="w-4 h-4" />
@@ -139,9 +139,9 @@ export default function ParkingCard({ lot, onSelect }) {
         {/* Transparent Price Breakdown Accordion */}
         <button
           onClick={() => setShowBreakdown(!showBreakdown)}
-          className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-800 transition-colors pt-2 border-t border-slate-100"
+          className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-800 transition-colors pt-2 border-t border-slate-100 cursor-pointer"
         >
-          <span>View itemized quote &amp; coupon savings</span>
+          <span>{lot.pricing.discountAmount > 0 ? 'View itemized quote & coupon savings' : 'View itemized price breakdown'}</span>
           {showBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
 

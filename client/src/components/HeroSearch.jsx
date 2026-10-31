@@ -66,7 +66,7 @@ export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirpo
         {/* Competitor Style Quotation Box */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-blue-900/5 border border-slate-200 relative overflow-hidden"
+          className="bg-white rounded-3xl p-5 sm:p-8 shadow-xl shadow-blue-900/5 border border-slate-200 relative overflow-hidden"
         >
           {/* Top highlight bar */}
           <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#061F75] via-[#C8102E] to-[#061F75]" />
@@ -150,31 +150,28 @@ export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirpo
           </div>
 
           {/* Bottom Controls: Promo Code & Red CTA */}
-          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
             {/* Promo Code Input */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <div className="relative flex items-center w-full sm:w-64">
-                <Tag className="w-4 h-4 text-emerald-600 absolute left-3" />
+                <Tag className="w-4 h-4 text-slate-400 absolute left-3" />
                 <input
                   type="text"
-                  placeholder="Promo code (e.g. apd10)"
+                  placeholder="Promo code (optional)"
                   value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 bg-emerald-50/60 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 uppercase tracking-wider focus:outline-none focus:border-emerald-600"
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider focus:outline-none transition-all shadow-inner"
                 />
               </div>
-              <span className="hidden sm:inline text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md shrink-0">
-                ✓ 10% Discount Auto-Applied
-              </span>
             </div>
 
             {/* Union Jack Red CTA Button */}
             <button
               type="submit"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-red-700/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+              className="w-full sm:w-auto px-8 py-3.5 sm:py-4 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-red-700/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
             >
               <Search className="w-5 h-5 stroke-[2.5]" />
-              <span>Get Quote &amp; Compare</span>
+              <span>Get Quote &amp; Compare Deals</span>
             </button>
           </div>
         </form>

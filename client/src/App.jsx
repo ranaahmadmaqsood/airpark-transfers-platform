@@ -7,7 +7,7 @@ import VoucherModal from './components/VoucherModal';
 import AdminPortal from './components/AdminPortal';
 import FaqSection from './components/FaqSection';
 import { searchParkingLots, findBookingByRef, subscribeToParkingLots } from './services/apiClient';
-import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag } from 'lucide-react';
+import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [selectedAirport, setSelectedAirport] = useState('LHR');
@@ -71,9 +71,22 @@ export default function App() {
     }
   };
 
+  const scrollToQuotes = () => {
+    setTimeout(() => {
+      const el = document.getElementById('quotes-results-section');
+      if (el) {
+        const yOffset = -80; // account for sticky navbar
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
+    }, 100);
+  };
+
   const handleSearch = (newParams) => {
+    if (newParams.airport) setSelectedAirport(newParams.airport);
     setSearchParams(newParams);
     fetchParkingLots(newParams);
+    scrollToQuotes();
   };
 
   const handleQuickAirportSelect = (airportCode) => {
@@ -81,6 +94,7 @@ export default function App() {
     const updated = { ...searchParams, airport: airportCode };
     setSearchParams(updated);
     fetchParkingLots(updated);
+    scrollToQuotes();
   };
 
   const handleFilterChange = (filterType) => {
@@ -143,7 +157,7 @@ export default function App() {
       />
 
       {/* Main Results Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8">
+      <main id="quotes-results-section" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-8 scroll-mt-24">
         {/* Results Header & Filter Bar */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -180,18 +194,35 @@ export default function App() {
           </div>
         </div>
 
-        {/* Promo Code Notification Banner */}
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-900">
-          <div className="flex items-center gap-2.5">
-            <Tag className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>
-              Promo code <strong>"{searchParams.promoCode.toUpperCase()}"</strong> active: <strong>10% Discount</strong> automatically deducted from all quoted gate rates!
+        {/* Promo Code Notification Banner - Only shown if an active promo code is applied */}
+        {searchParams.promoCode && parkingLots.some(l => (l.pricing?.discountPercentage || 0) > 0) && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-900 animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <Tag className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Promo code <strong>&quot;{searchParams.promoCode.toUpperCase()}&quot;</strong> active: <strong>{parkingLots.find(l => (l.pricing?.discountPercentage || 0) > 0)?.pricing?.discountPercentage}% Discount</strong> successfully deducted from all quoted rates!
+              </span>
+            </div>
+            <span className="hidden sm:inline font-bold bg-emerald-200/80 px-2.5 py-1 rounded text-emerald-800 text-[11px]">
+              Voucher Applied
             </span>
           </div>
-          <span className="hidden sm:inline font-bold bg-emerald-200/80 px-2 py-0.5 rounded text-emerald-800 text-[11px]">
-            Best Rate Guaranteed
-          </span>
-        </div>
+        )}
+
+        {/* Promo Code Inactive / Expired Notice - Only shown if customer entered a code that was rejected/disabled */}
+        {searchParams.promoCode && !loadingParking && parkingLots.length > 0 && !parkingLots.some(l => (l.pricing?.discountPercentage || 0) > 0) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-amber-900 animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Promo code <strong>&quot;{searchParams.promoCode.toUpperCase()}&quot;</strong> is currently disabled or expired. Standard online advance rates are displayed below.
+              </span>
+            </div>
+            <span className="hidden sm:inline font-bold bg-amber-200/80 px-2.5 py-1 rounded text-amber-800 text-[11px]">
+              Standard Advance Rates
+            </span>
+          </div>
+        )}
 
         {/* Parking Cards Grid */}
         {loadingParking ? (

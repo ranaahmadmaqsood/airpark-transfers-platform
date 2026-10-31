@@ -52,23 +52,23 @@ export default function Navbar({ onOpenLookup, onAirportQuickSelect, selectedAir
       {/* Main Navigation Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo */}
-        <div className="flex items-center gap-3 cursor-pointer group">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#061F75] via-[#0B2EA2] to-[#C8102E] p-0.5 flex items-center justify-center shadow-md">
-            <div className="w-full h-full bg-white rounded-[10px] flex items-center justify-center">
-              <Plane className="w-7 h-7 text-[#061F75] -rotate-45 group-hover:scale-110 transition-transform" />
+        <div className="flex items-center gap-2 sm:gap-3 cursor-pointer group">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#061F75] via-[#0B2EA2] to-[#C8102E] p-0.5 flex items-center justify-center shadow-md shrink-0">
+            <div className="w-full h-full bg-white rounded-[9px] sm:rounded-[10px] flex items-center justify-center">
+              <Plane className="w-5 h-5 sm:w-7 sm:h-7 text-[#061F75] -rotate-45 group-hover:scale-110 transition-transform" />
             </div>
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-2xl font-black tracking-tight text-[#061F75]">
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <span className="text-base sm:text-2xl font-black tracking-tight text-[#061F75]">
                 Airport Parking <span className="text-[#C8102E]">Deals</span>
               </span>
-              <span className="bg-[#C8102E] text-white text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded tracking-wider">
+              <span className="bg-[#C8102E] text-white text-[9px] sm:text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded tracking-wider">
                 UK
               </span>
             </div>
-            <p className="text-[11px] font-medium text-slate-500">
-              Compare & Book Secured Airport Car Parks
+            <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 hidden xs:block">
+              Compare &amp; Book Secured Airport Car Parks
             </p>
           </div>
         </div>

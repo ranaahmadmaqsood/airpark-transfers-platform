@@ -5,6 +5,9 @@ import { updateBookingDetails, dispatchVoucherEmail } from '../services/apiClien
 export default function VoucherModal({ booking, onClose }) {
   const [currentBooking, setCurrentBooking] = useState(booking);
   const [isEditing, setIsEditing] = useState(false);
+  const [amendName, setAmendName] = useState(booking?.customerName || '');
+  const [amendEmail, setAmendEmail] = useState(booking?.customerEmail || '');
+  const [amendPhone, setAmendPhone] = useState(booking?.customerPhone || '');
   const [amendReg, setAmendReg] = useState(booking?.vehicleReg || '');
   const [amendFlight, setAmendFlight] = useState(booking?.flightNumber || '');
   const [saving, setSaving] = useState(false);
@@ -37,13 +40,16 @@ export default function VoucherModal({ booking, onClose }) {
     setSuccessMsg(null);
     try {
       const updated = await updateBookingDetails(currentBooking.id, {
+        customerName: amendName,
+        customerEmail: amendEmail,
+        customerPhone: amendPhone,
         vehicleReg: amendReg,
         flightNumber: amendFlight
       });
       setCurrentBooking(updated);
       setIsEditing(false);
-      setSuccessMsg('Booking details and ANPR registration updated successfully in database.');
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setSuccessMsg(`Passenger information, ANPR registration and voucher updated successfully in database! Confirmation sent to ${amendEmail}.`);
+      setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err) {
       alert('Failed to update: ' + err.message);
     } finally {
@@ -159,11 +165,19 @@ export default function VoucherModal({ booking, onClose }) {
 
           {/* Details Grid & Self-Service Amendment */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block">Lead Passenger</span>
-              <p className="font-bold text-slate-900 mt-0.5">{currentBooking.customerName}</p>
-              <p className="text-slate-500 text-[11px]">{currentBooking.customerEmail}</p>
-              <p className="text-slate-500 text-[11px]">{currentBooking.customerPhone || 'Not provided'}</p>
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Lead Passenger</span>
+                <p className="font-bold text-slate-900 mt-0.5 text-sm">{currentBooking.customerName}</p>
+                <p className="text-slate-600 text-xs mt-0.5 font-medium flex items-center gap-1">
+                  <Mail className="w-3 h-3 text-[#061F75]" />
+                  <span>{currentBooking.customerEmail}</span>
+                </p>
+                <p className="text-slate-600 text-xs mt-0.5 font-medium flex items-center gap-1">
+                  <Phone className="w-3 h-3 text-emerald-600" />
+                  <span>{currentBooking.customerPhone || 'Not provided'}</span>
+                </p>
+              </div>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
@@ -172,60 +186,106 @@ export default function VoucherModal({ booking, onClose }) {
                   <span className="text-[10px] uppercase font-bold text-slate-500">ANPR Plate &amp; Flight</span>
                   <button
                     onClick={() => setIsEditing(!isEditing)}
-                    className="text-[10px] font-bold text-[#061F75] hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] font-bold text-[#061F75] bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors"
                   >
                     <Edit3 className="w-3 h-3 text-[#061F75]" />
-                    <span>{isEditing ? 'Cancel Edit' : 'Amend Details'}</span>
+                    <span>{isEditing ? 'Close Edit' : 'Edit Passenger & Vehicle'}</span>
                   </button>
                 </div>
-                <p className="font-mono font-bold text-slate-900">
-                  Plate: <span className="bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">{currentBooking.vehicleReg || 'N/A'}</span>
+                <p className="font-mono font-bold text-slate-900 mt-1">
+                  Plate: <span className="bg-amber-100 text-slate-900 px-2 py-0.5 rounded border border-amber-300 font-black">{currentBooking.vehicleReg || 'N/A'}</span>
                 </p>
-                <p className="font-mono text-slate-600 text-[11px] mt-1">Flight: {currentBooking.flightNumber || 'None specified'}</p>
+                <p className="font-mono text-slate-600 text-[11px] mt-1.5 flex items-center gap-1">
+                  <Plane className="w-3 h-3 text-slate-400" />
+                  <span>Flight: {currentBooking.flightNumber || 'None specified'}</span>
+                </p>
               </div>
-              <p className="text-emerald-700 font-bold text-[11px] mt-1">✓ Forecourt Levy Paid</p>
+              <p className="text-emerald-700 font-bold text-[11px] mt-2">✓ Forecourt Levy Paid &amp; Covered</p>
             </div>
           </div>
 
-          {/* Amendment Form (when user clicks Amend Details) */}
+          {/* Amendment Form (when user clicks Edit Passenger & Vehicle) */}
           {isEditing && (
-            <form onSubmit={handleSaveAmendment} className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-xs space-y-3">
-              <div className="font-bold text-[#061F75]">Amend Vehicle Registration or Flight Number</div>
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSaveAmendment} className="p-4 sm:p-5 rounded-2xl bg-blue-50/90 border border-blue-200 text-xs space-y-3.5 animate-in fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-blue-200/80">
+                <span className="font-extrabold text-[#061F75] text-sm flex items-center gap-1.5">
+                  <Edit3 className="w-4 h-4 text-[#061F75]" />
+                  <span>Update Passenger &amp; Vehicle Information</span>
+                </span>
+                <span className="text-[10px] text-slate-500">Instant Supabase Sync</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">Vehicle Plate (ANPR)</label>
+                  <label className="block text-[10px] uppercase font-bold text-slate-700 mb-1">Passenger Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={amendName}
+                    onChange={(e) => setAmendName(e.target.value)}
+                    placeholder="e.g. John Smith"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-700 mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={amendEmail}
+                    onChange={(e) => setAmendEmail(e.target.value)}
+                    placeholder="e.g. john@example.co.uk"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-700 mb-1">Mobile / Phone *</label>
+                  <input
+                    type="tel"
+                    value={amendPhone}
+                    onChange={(e) => setAmendPhone(e.target.value)}
+                    placeholder="e.g. 07700 900123"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-[#061F75]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-slate-700 mb-1">Vehicle Plate (ANPR Barrier) *</label>
                   <input
                     type="text"
                     required
                     value={amendReg}
                     onChange={(e) => setAmendReg(e.target.value.toUpperCase())}
                     placeholder="e.g. AB24 CDE"
-                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold uppercase text-slate-900 outline-none"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-mono font-black uppercase text-slate-900 outline-none focus:border-[#061F75]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-slate-600 mb-1">Flight Number</label>
+                  <label className="block text-[10px] uppercase font-bold text-slate-700 mb-1">Return Flight Number</label>
                   <input
                     type="text"
                     value={amendFlight}
                     onChange={(e) => setAmendFlight(e.target.value.toUpperCase())}
                     placeholder="e.g. BA 175"
-                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono uppercase text-slate-900 outline-none"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 font-mono font-bold uppercase text-slate-900 outline-none focus:border-[#061F75]"
                   />
                 </div>
               </div>
-              <div className="flex gap-2">
+
+              <div className="flex gap-2.5 pt-2">
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg bg-[#061F75] text-white font-bold text-xs hover:bg-[#0B2EA2] transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-[#061F75] text-white font-extrabold text-xs hover:bg-[#0B2EA2] transition-colors cursor-pointer shadow-md disabled:opacity-50"
                 >
-                  {saving ? 'Updating Database...' : 'Save & Update Voucher'}
+                  {saving ? 'Saving to Database...' : 'Save & Update Voucher'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="px-3 py-2 rounded-lg bg-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-300 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
