@@ -1,6 +1,5 @@
 const { PARKING_LOTS } = require('../../server/data/parkingLots');
 const { AIRPORTS } = require('../../server/data/airports');
-const { supabase } = require('../../server/supabase');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -11,93 +10,110 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  const { airport = 'LHR', fromDate, toDate, type, sortBy = 'recommended' } = req.query;
+  const {
+    airport = 'LHR',
+    fromDate,
+    toDate,
+    fromTime = '10:00',
+    toTime = '12:00',
+    type = 'all',
+    promoCode = 'apd10',
+    sortBy = 'recommended'
+  } = req.query;
 
+  // Duration in days (default 7 days)
   let durationDays = 7;
   if (fromDate && toDate) {
     const diffTime = Math.abs(new Date(toDate) - new Date(fromDate));
     durationDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
   }
 
-  let results = [];
+  // Filter by airport code
+  let results = PARKING_LOTS.filter((lot) => lot.airportCode.toUpperCase() === airport.toUpperCase());
 
-  try {
-    let query = supabase.from('parking_lots').select('*').eq('airport_code', airport.toUpperCase());
-    if (type && type !== 'all') {
-      query = query.eq('type', type);
-    }
-    const { data, error } = await query;
-    if (!error && data && data.length > 0) {
-      results = data.map(item => ({
-        id: item.id,
-        airportCode: item.airport_code,
-        name: item.name,
-        operatorName: item.operator_name,
-        type: item.type,
-        baseDailyRate: parseFloat(item.base_daily_rate),
-        operatorNetRate: parseFloat(item.operator_net_rate),
-        commissionRate: parseFloat(item.commission_rate),
-        transferDurationMinutes: item.transfer_duration_minutes,
-        transferFrequencyMinutes: item.transfer_frequency_minutes,
-        distanceMiles: parseFloat(item.distance_miles),
-        rating: parseFloat(item.rating),
-        reviewCount: item.review_count,
-        parkMarkAccredited: item.park_mark_accredited,
-        securityBadges: item.security_badges || [],
-        features: item.features || [],
-        cancellationPolicy: item.cancellation_policy,
-        instructions: item.instructions
-      }));
-    }
-  } catch (e) {
-    console.error('Supabase query failed, falling back', e);
+  // Filter by type
+  if (type && type !== 'all') {
+    results = results.filter((lot) => lot.type === type);
   }
 
-  if (results.length === 0) {
-    results = PARKING_LOTS.filter(lot => lot.airportCode.toUpperCase() === airport.toUpperCase());
-    if (type && type !== 'all') {
-      results = results.filter(lot => lot.type === type);
-    }
+  // Promo code discount resolution
+  const normPromo = (promoCode || '').trim().toLowerCase();
+  let discountPercentage = 0;
+  let promoMessage = '';
+  if (normPromo === 'apd10' || normPromo === 'cpd10') {
+    discountPercentage = 0.10;
+    promoMessage = '10% Discount Applied (Code: ' + promoCode.toUpperCase() + ')';
+  } else if (normPromo === 'wlcme' || normPromo === 'cmpwlcme') {
+    discountPercentage = 0.15;
+    promoMessage = '15% Welcome Discount Applied (Code: ' + promoCode.toUpperCase() + ')';
+  } else if (normPromo === 'save20') {
+    discountPercentage = 0.20;
+    promoMessage = '20% Super Saver Applied (Code: ' + promoCode.toUpperCase() + ')';
   }
 
-  const quotes = results.map(lot => {
-    const totalDailyRate = Math.round(lot.baseDailyRate * durationDays * 100) / 100;
+  const airportMeta = AIRPORTS.find((a) => a.code === airport.toUpperCase()) || {
+    currency: 'GBP',
+    symbol: '£',
+    terminalDropoffFee: 5.00
+  };
+
+  const quotes = results.map((lot) => {
+    // Official Airport Gate price anchor (shows 50%-60% savings)
+    const gateAnchorRate = lot.baseDailyRate * 2.2;
+    const gateTotal = Math.round(gateAnchorRate * durationDays * 100) / 100;
+
+    // Base subtotal
+    const subtotal = Math.round(lot.baseDailyRate * durationDays * 100) / 100;
+    
+    // Promo discount deduction
+    const discountAmount = Math.round(subtotal * discountPercentage * 100) / 100;
+    const discountedSubtotal = Math.round((subtotal - discountAmount) * 100) / 100;
+
+    // Platform booking fee (£1.95)
+    const bookingFee = 1.95;
+    
+    // Final customer total
+    const customerTotal = Math.round((discountedSubtotal + bookingFee) * 100) / 100;
+
+    // Operator net payout & platform margin
     const operatorNet = Math.round(lot.operatorNetRate * durationDays * 100) / 100;
-    const platformCommission = Math.round((totalDailyRate - operatorNet) * 100) / 100;
-    const bookingFee = (lot.airportCode === 'JFK' || lot.airportCode === 'EWR' || lot.airportCode === 'LAX') ? 3.99 : 2.99;
-    const customerTotal = Math.round((totalDailyRate + bookingFee) * 100) / 100;
-
-    const airportMeta = AIRPORTS.find(a => a.code === lot.airportCode) || { currency: 'GBP', symbol: '£' };
+    const platformMargin = Math.round((customerTotal - operatorNet) * 100) / 100;
 
     return {
       ...lot,
       durationDays,
       pricing: {
         dailyRate: lot.baseDailyRate,
-        subtotal: totalDailyRate,
+        gateTotal,
+        subtotal,
+        discountAmount,
+        discountPercentage: Math.round(discountPercentage * 100),
         bookingFee,
         totalPayable: customerTotal,
+        terminalDropoffFee: airportMeta.terminalDropoffFee,
         operatorNet,
-        platformCommission,
+        platformMargin,
         currency: airportMeta.currency,
         symbol: airportMeta.symbol
       }
     };
   });
 
+  // Sorting
   if (sortBy === 'price_asc') {
     quotes.sort((a, b) => a.pricing.totalPayable - b.pricing.totalPayable);
   } else if (sortBy === 'rating_desc') {
     quotes.sort((a, b) => b.rating - a.rating);
   } else if (sortBy === 'distance_asc') {
     quotes.sort((a, b) => a.distanceMiles - b.distanceMiles);
-  } else if (sortBy === 'transfer_time') {
-    quotes.sort((a, b) => a.transferDurationMinutes - b.transferDurationMinutes);
   }
 
   return res.status(200).json({
     airport,
     durationDays,
+    promoCode: promoCode || '',
+    promoMessage,
+    discountPercentage: Math.round(discountPercentage * 100),
     totalFound: quotes.length,
     results: quotes
   });

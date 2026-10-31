@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Plane, Calendar, Search, Filter, ShieldCheck, ArrowRight, Clock } from 'lucide-react';
+import { Plane, Calendar, Clock, Tag, Search, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirport }) {
   const [airports, setAirports] = useState([]);
-  const [fromDate, setFromDate] = useState('2026-11-05');
-  const [toDate, setToDate] = useState('2026-11-12');
+  const [fromDate, setFromDate] = useState('2026-11-07');
+  const [fromTime, setFromTime] = useState('10:00');
+  const [toDate, setToDate] = useState('2026-11-14');
+  const [toTime, setToTime] = useState('12:00');
+  const [promoCode, setPromoCode] = useState('apd10');
   const [parkingType, setParkingType] = useState('all');
-  const [sortBy, setSortBy] = useState('recommended');
 
   useEffect(() => {
     fetch('/api/airports')
@@ -17,166 +19,174 @@ export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirpo
       .catch((err) => console.error('Failed to load airports', err));
   }, []);
 
-  const handleSearchSubmit = (e) => {
+  const timeOptions = [
+    '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00',
+    '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00',
+    '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
+  ];
+
+  const handleSubmit = (e) => {
     e.preventDefault();
     onSearch({
       airport: selectedAirport,
       fromDate,
+      fromTime,
       toDate,
-      type: parkingType,
-      sortBy
+      toTime,
+      promoCode,
+      type: parkingType
     });
   };
 
   return (
-    <div className="relative rounded-3xl overflow-hidden bg-gradient-to-b from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-10 shadow-2xl">
-      {/* Background ambient glow */}
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="relative z-10 max-w-4xl mx-auto text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-sky-950/60 border border-sky-800/80 text-sky-400 text-xs font-semibold uppercase tracking-wider mb-4">
-          <Plane className="w-3.5 h-3.5" />
-          <span>Save up to 70% vs Airport Gate Rates</span>
+    <div className="relative bg-gradient-to-b from-blue-50/70 via-white to-slate-50 border-b border-slate-200 py-10 sm:py-14 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-5xl mx-auto">
+        {/* Hero Title & Value Proposition */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 border border-blue-200 text-[#061F75] text-xs font-extrabold uppercase tracking-wider mb-3">
+            <span className="text-sm">🇬🇧</span>
+            <span>Stress-Free UK Airport Parking Starts Here</span>
+          </div>
+          <h1 className="text-3xl sm:text-5xl font-black text-[#061F75] tracking-tight mb-3">
+            Compare UK Airport Parking Deals <span className="text-[#C8102E]">&amp; Save Up To 60%</span>
+          </h1>
+          <p className="text-sm sm:text-base text-slate-600 max-w-2xl mx-auto">
+            Find the cheapest secured parking spots at Heathrow, Gatwick, Manchester, Stansted, and all major UK airports. Meet &amp; Greet and Park &amp; Ride available with instant booking confirmation.
+          </p>
         </div>
-        <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-3">
-          Compare Airport Parking <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-indigo-400">&</span> Private Transfers
-        </h1>
-        <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto">
-          Pre-book verified Park & Ride, VIP Meet & Greet, On-Airport Long Stay, and executive private hire chauffeur transfers across the UK & North America.
-        </p>
-      </div>
 
-      {/* Search Filter Form */}
-      <form
-        onSubmit={handleSearchSubmit}
-        className="relative z-10 bg-slate-950/90 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl max-w-5xl mx-auto"
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          {/* Airport Select */}
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Departure Airport
-            </label>
-            <div className="relative">
+        {/* Competitor Style Quotation Box */}
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-blue-900/5 border border-slate-200 relative overflow-hidden"
+        >
+          {/* Top highlight bar */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#061F75] via-[#C8102E] to-[#061F75]" />
+
+          {/* Form Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-5">
+            {/* 1. Airport Selection */}
+            <div className="lg:col-span-1">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+                <Plane className="w-4 h-4 text-[#061F75]" />
+                Select Airport
+              </label>
               <select
                 value={selectedAirport}
                 onChange={(e) => setSelectedAirport(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-3 text-sm text-white focus:outline-none focus:border-sky-500 transition-colors"
+                className="w-full bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl px-4 py-3 text-sm font-bold text-[#061F75] outline-none transition-all cursor-pointer shadow-sm"
               >
                 {airports.map((ap) => (
                   <option key={ap.code} value={ap.code}>
-                    {ap.city} - {ap.name} ({ap.code})
+                    {ap.name} ({ap.code})
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* Drop-off Date */}
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Drop-off Date
-            </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-3 text-sm text-white focus:outline-none focus:border-sky-500 transition-colors"
-              />
+            {/* 2. Drop-off Date & Time */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-[#061F75]" />
+                Drop-off (Departure)
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                <input
+                  type="date"
+                  required
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="col-span-3 bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 outline-none transition-all"
+                />
+                <select
+                  value={fromTime}
+                  onChange={(e) => setFromTime(e.target.value)}
+                  className="col-span-2 bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl px-2 py-2.5 text-xs font-semibold text-slate-900 outline-none transition-all cursor-pointer"
+                >
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 3. Pick-up Date & Time */}
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-[#061F75]" />
+                Pick-up (Arrival)
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                <input
+                  type="date"
+                  required
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="col-span-3 bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-slate-900 outline-none transition-all"
+                />
+                <select
+                  value={toTime}
+                  onChange={(e) => setToTime(e.target.value)}
+                  className="col-span-2 bg-slate-50 border border-slate-300 hover:border-slate-400 focus:border-[#061F75] focus:bg-white rounded-xl px-2 py-2.5 text-xs font-semibold text-slate-900 outline-none transition-all cursor-pointer"
+                >
+                  {timeOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* Pick-up Date */}
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Pick-up Date
-            </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-3 text-sm text-white focus:outline-none focus:border-sky-500 transition-colors"
-              />
+          {/* Bottom Controls: Promo Code & Red CTA */}
+          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Promo Code Input */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex items-center w-full sm:w-64">
+                <Tag className="w-4 h-4 text-emerald-600 absolute left-3" />
+                <input
+                  type="text"
+                  placeholder="Promo code (e.g. apd10)"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-emerald-50/60 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 uppercase tracking-wider focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+              <span className="hidden sm:inline text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md shrink-0">
+                ✓ 10% Discount Auto-Applied
+              </span>
             </div>
-          </div>
 
-          {/* Search Button */}
-          <div className="flex items-end">
+            {/* Union Jack Red CTA Button */}
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-red-700/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
             >
-              <Search className="w-4 h-4" />
-              <span>Search Available Lots</span>
+              <Search className="w-5 h-5 stroke-[2.5]" />
+              <span>Get Quote &amp; Compare</span>
             </button>
           </div>
-        </div>
+        </form>
 
-        {/* Filter & Sort Chips Row */}
-        <div className="pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-          {/* Parking Type Quick Filter */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-slate-500 font-semibold uppercase text-[10px] mr-1">Filter:</span>
-            {[
-              { id: 'all', label: 'All Lots' },
-              { id: 'park_and_ride', label: 'Park & Ride' },
-              { id: 'meet_and_greet', label: 'Meet & Greet / Valet' },
-              { id: 'on_site', label: 'On-Airport Long Stay' },
-              { id: 'park_sleep_fly', label: 'Hotel + Parking' }
-            ].map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => {
-                  setParkingType(f.id);
-                  onSearch({
-                    airport: selectedAirport,
-                    fromDate,
-                    toDate,
-                    type: f.id,
-                    sortBy
-                  });
-                }}
-                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  parkingType === f.id
-                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/50 font-bold'
-                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Sort By Dropdown */}
+        {/* Trust Badges Strip Under Search Box */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs font-semibold text-slate-600">
           <div className="flex items-center gap-2">
-            <span className="text-slate-500 font-semibold uppercase text-[10px]">Sort By:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                onSearch({
-                  airport: selectedAirport,
-                  fromDate,
-                  toDate,
-                  type: parkingType,
-                  sortBy: e.target.value
-                });
-              }}
-              className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
-            >
-              <option value="recommended">Best Value (Recommended)</option>
-              <option value="price_asc">Price: Lowest First</option>
-              <option value="rating_desc">Highest Customer Rating</option>
-              <option value="distance_asc">Nearest to Terminal</option>
-              <option value="transfer_time">Shortest Transfer Time</option>
-            </select>
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Park Mark® Safer Parking Approved</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#061F75]" />
+            <span>British Parking Association (BPA) Members</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-amber-500" />
+            <span>Free Cancellation Up to 24h Before Travel</span>
           </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

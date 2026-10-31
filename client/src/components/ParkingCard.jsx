@@ -1,163 +1,173 @@
 import React, { useState } from 'react';
-import { Shield, Clock, Bus, MapPin, CheckCircle2, ChevronDown, ChevronUp, Star } from 'lucide-react';
+import { Shield, Clock, Bus, MapPin, CheckCircle2, ChevronDown, ChevronUp, Star, ArrowRight } from 'lucide-react';
 
 export default function ParkingCard({ lot, onSelect }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
 
-  const getTypeName = (type) => {
-    switch (type) {
-      case 'park_and_ride':
-        return 'Park & Ride Shuttle';
-      case 'meet_and_greet':
-        return 'Valet / Meet & Greet';
-      case 'park_sleep_fly':
-        return 'Hotel + Parking Package';
-      case 'on_site':
-        return 'Official On-Airport Long Stay';
-      default:
-        return 'Airport Parking';
-    }
-  };
-
-  const getTypeBadgeClass = (type) => {
-    switch (type) {
-      case 'meet_and_greet':
-        return 'bg-amber-950/70 text-amber-300 border-amber-800';
-      case 'park_sleep_fly':
-        return 'bg-purple-950/70 text-purple-300 border-purple-800';
-      case 'on_site':
-        return 'bg-emerald-950/70 text-emerald-300 border-emerald-800';
-      default:
-        return 'bg-sky-950/70 text-sky-300 border-sky-800';
-    }
-  };
+  const isMeetAndGreet = lot.type === 'meet_and_greet';
 
   return (
-    <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-5 sm:p-6 transition-all hover:border-slate-700 hover:shadow-xl hover:shadow-sky-500/5 flex flex-col justify-between">
-      <div>
-        {/* Header Badges */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${getTypeBadgeClass(lot.type)}`}>
-              {getTypeName(lot.type)}
-            </span>
-            {lot.parkMarkAccredited && (
-              <span className="flex items-center gap-1 text-[11px] font-medium bg-emerald-950 text-emerald-400 border border-emerald-800/80 px-2 py-0.5 rounded">
-                <Shield className="w-3 h-3 text-emerald-400" />
-                Park Mark®
-              </span>
-            )}
-          </div>
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 transition-all hover:border-[#061F75]/40 hover:shadow-xl hover:shadow-blue-900/5 flex flex-col justify-between relative overflow-hidden group">
+      {/* Top promotional ribbon for highest rated */}
+      {lot.rating >= 4.8 && (
+        <div className="absolute top-0 right-0 bg-[#FFB400] text-slate-900 text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl tracking-wider shadow-sm">
+          ★ Customer Favourite
+        </div>
+      )}
 
-          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-300 bg-amber-950/40 px-2.5 py-1 rounded-md border border-amber-900/40">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span className="font-bold">{lot.rating}</span>
-            <span className="text-slate-400">({lot.reviewCount})</span>
-          </div>
+      <div>
+        {/* Service Type & Safety Badges */}
+        <div className="flex flex-wrap items-center gap-2 mb-3 pr-28">
+          <span
+            className={`text-xs font-bold px-2.5 py-1 rounded-md border ${
+              isMeetAndGreet
+                ? 'bg-[#061F75] text-white border-[#061F75]'
+                : 'bg-blue-50 text-[#061F75] border-blue-200'
+            }`}
+          >
+            {isMeetAndGreet ? 'Meet & Greet (Terminal Forecourt)' : 'Park & Ride (Yard Shuttle)'}
+          </span>
+
+          {lot.parkMarkAccredited && (
+            <span className="flex items-center gap-1 text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+              <Shield className="w-3.5 h-3.5 text-emerald-600" />
+              Park Mark®
+            </span>
+          )}
         </div>
 
-        {/* Title and Operator */}
-        <h3 className="text-lg font-bold text-white mb-1 group-hover:text-sky-400 transition-colors">
+        {/* Title & Operator Yard */}
+        <h3 className="text-lg font-bold text-slate-900 group-hover:text-[#061F75] transition-colors mb-1">
           {lot.name}
         </h3>
-        <p className="text-xs text-slate-400 mb-4">
-          Operated by: <span className="text-slate-300 font-medium">{lot.operatorName}</span>
+        <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
+          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span>Compound Yard: <strong className="text-slate-700">{lot.yardLocation || 'Airport Perimeter Compound'}</strong></span>
         </p>
 
-        {/* Key Metrics Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 mb-4 text-xs">
-          <div className="flex items-center gap-2 text-slate-300">
-            <Clock className="w-4 h-4 text-sky-400 shrink-0" />
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase font-semibold">Transfer Time</p>
-              <p className="font-medium">{lot.transferDurationMinutes} mins to terminal</p>
-            </div>
+        {/* Ratings & Reviews */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex text-amber-500">
+            {[...Array(5)].map((_, i) => (
+              <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            ))}
           </div>
+          <span className="text-xs font-bold text-slate-800">{lot.rating}</span>
+          <span className="text-xs text-slate-400">({lot.reviewCount} verified reviews)</span>
+        </div>
 
-          <div className="flex items-center gap-2 text-slate-300">
-            <Bus className="w-4 h-4 text-emerald-400 shrink-0" />
+        {/* Transfer & Distance Box */}
+        <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200/80 mb-4 text-xs">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-[#061F75] shrink-0" />
             <div>
-              <p className="text-[10px] text-slate-500 uppercase font-semibold">Shuttle Frequency</p>
-              <p className="font-medium">
-                {lot.transferFrequencyMinutes > 0 ? `Every ${lot.transferFrequencyMinutes}m` : 'Direct Valet'}
+              <p className="text-[10px] text-slate-400 uppercase font-bold">Transfer</p>
+              <p className="font-bold text-slate-800">
+                {isMeetAndGreet ? '0 min (At Terminal)' : `${lot.transferDurationMinutes} mins to terminal`}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-slate-300 col-span-2 sm:col-span-1">
-            <MapPin className="w-4 h-4 text-indigo-400 shrink-0" />
+          <div className="flex items-center gap-2">
+            <Bus className="w-4 h-4 text-emerald-600 shrink-0" />
             <div>
-              <p className="text-[10px] text-slate-500 uppercase font-semibold">Distance</p>
-              <p className="font-medium">{lot.distanceMiles} miles from airfield</p>
+              <p className="text-[10px] text-slate-400 uppercase font-bold">Shuttle</p>
+              <p className="font-bold text-slate-800">
+                {isMeetAndGreet ? 'Direct Valet' : `Every ${lot.transferFrequencyMinutes}m`}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Features list */}
+        {/* Key Features Bullet List */}
         <div className="space-y-1.5 mb-4">
-          {lot.features.slice(0, 3).map((feat, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+          {lot.features.map((feat, idx) => (
+            <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>{feat}</span>
             </div>
           ))}
         </div>
 
-        {/* Cancellation policy banner */}
-        <div className="text-[11px] text-slate-400 bg-slate-950/40 px-3 py-1.5 rounded-lg border border-slate-800/60 mb-4">
-          🛡️ {lot.cancellationPolicy}
+        {/* Free cancellation notice */}
+        <div className="text-[11px] text-slate-600 bg-emerald-50/60 border border-emerald-100 px-3 py-1.5 rounded-lg mb-4 flex items-center gap-1.5">
+          <span className="text-emerald-700 font-bold">✓</span>
+          <span>{lot.cancellationPolicy}</span>
         </div>
       </div>
 
-      {/* Footer / Price & Book */}
-      <div className="border-t border-slate-800/80 pt-4 mt-2">
+      {/* Pricing & CTA Block */}
+      <div className="border-t border-slate-200 pt-4 mt-2">
         <div className="flex items-end justify-between mb-3">
           <div>
-            <span className="text-xs text-slate-400 block">Total for {lot.durationDays} days</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-extrabold text-white">
-                {lot.pricing.symbol}{lot.pricing.totalPayable.toFixed(2)}
+            {/* Strikethrough gate price & discount pill */}
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-xs text-slate-400 line-through">
+                £{lot.pricing.gateTotal.toFixed(2)}
               </span>
-              <span className="text-xs text-slate-400">
-                ({lot.pricing.symbol}{lot.pricing.dailyRate.toFixed(2)} / day)
+              {lot.pricing.discountPercentage > 0 && (
+                <span className="text-[10px] font-extrabold uppercase bg-red-100 text-[#C8102E] px-2 py-0.5 rounded">
+                  Save {lot.pricing.discountPercentage}%
+                </span>
+              )}
+            </div>
+
+            {/* Big price display */}
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-black text-[#061F75]">
+                £{lot.pricing.totalPayable.toFixed(2)}
+              </span>
+              <span className="text-xs text-slate-500 font-medium">
+                ({lot.durationDays} days)
               </span>
             </div>
+            <span className="text-[10px] text-slate-400 block mt-0.5">
+              Includes all booking &amp; terminal levies
+            </span>
           </div>
 
+          {/* Union Jack Red CTA */}
           <button
             onClick={() => onSelect(lot)}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
+            className="px-6 py-3 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white font-extrabold text-sm shadow-md shadow-red-700/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 uppercase tracking-wider"
           >
-            Reserve Spot
+            <span>Book Now</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Business Model Transparency Accordion */}
+        {/* Transparent Price Breakdown Accordion */}
         <button
           onClick={() => setShowBreakdown(!showBreakdown)}
-          className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 transition-colors pt-2 border-t border-slate-800/40"
+          className="w-full flex items-center justify-between text-[11px] text-slate-500 hover:text-slate-800 transition-colors pt-2 border-t border-slate-100"
         >
-          <span>Marketplace commission & fee breakdown</span>
-          {showBreakdown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          <span>View itemized quote &amp; coupon savings</span>
+          {showBreakdown ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
 
         {showBreakdown && (
-          <div className="mt-2.5 p-2.5 rounded-lg bg-slate-950 text-[11px] font-mono text-slate-300 space-y-1 border border-slate-800">
+          <div className="mt-2.5 p-3 rounded-xl bg-slate-50 text-[11px] text-slate-700 space-y-1.5 border border-slate-200">
             <div className="flex justify-between">
-              <span className="text-slate-400">Operator Net Payout:</span>
-              <span>{lot.pricing.symbol}{lot.pricing.operatorNet.toFixed(2)}</span>
+              <span>Standard Parking ({lot.durationDays} days @ £{lot.pricing.dailyRate.toFixed(2)}/day):</span>
+              <span>£{lot.pricing.subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">OTA Commission ({(lot.commissionRate * 100).toFixed(0)}%):</span>
-              <span className="text-emerald-400">+{lot.pricing.symbol}{lot.pricing.platformCommission.toFixed(2)}</span>
+            {lot.pricing.discountAmount > 0 && (
+              <div className="flex justify-between text-[#C8102E] font-bold">
+                <span>Promo Code Discount ({lot.pricing.discountPercentage}% off):</span>
+                <span>-£{lot.pricing.discountAmount.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-slate-500">
+              <span>Booking &amp; Administration Fee:</span>
+              <span>+£{lot.pricing.bookingFee.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Platform Booking / Service Fee:</span>
-              <span className="text-indigo-400">+{lot.pricing.symbol}{lot.pricing.bookingFee.toFixed(2)}</span>
+            <div className="flex justify-between text-emerald-700 font-semibold">
+              <span>Terminal Forecourt Drop-off Levy:</span>
+              <span>Included</span>
             </div>
-            <div className="flex justify-between pt-1 border-t border-slate-800 font-bold">
-              <span>Gross Total Charged:</span>
-              <span className="text-white">{lot.pricing.symbol}{lot.pricing.totalPayable.toFixed(2)}</span>
+            <div className="flex justify-between pt-1.5 border-t border-slate-200 font-black text-xs text-[#061F75]">
+              <span>Total Payable Now:</span>
+              <span>£{lot.pricing.totalPayable.toFixed(2)}</span>
             </div>
           </div>
         )}

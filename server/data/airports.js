@@ -1,43 +1,26 @@
+// UK Airports matching airportparkingdeals.co.uk & airportparkingdeals.uk
 const AIRPORTS = [
   {
     code: 'LHR',
-    name: 'London Heathrow Airport',
+    name: 'Heathrow Airport',
     city: 'London',
     country: 'United Kingdom',
     currency: 'GBP',
     symbol: '£',
     terminals: ['Terminal 2', 'Terminal 3', 'Terminal 4', 'Terminal 5'],
-    terminalDropoffFee: 5.00
+    terminalDropoffFee: 5.00,
+    headlinePrice: 39.99
   },
   {
     code: 'LGW',
-    name: 'London Gatwick Airport',
+    name: 'Gatwick Airport',
     city: 'London / Crawley',
     country: 'United Kingdom',
     currency: 'GBP',
     symbol: '£',
     terminals: ['North Terminal', 'South Terminal'],
-    terminalDropoffFee: 5.00
-  },
-  {
-    code: 'STN',
-    name: 'London Stansted Airport',
-    city: 'London / Essex',
-    country: 'United Kingdom',
-    currency: 'GBP',
-    symbol: '£',
-    terminals: ['Main Terminal'],
-    terminalDropoffFee: 7.00
-  },
-  {
-    code: 'LTN',
-    name: 'London Luton Airport',
-    city: 'London / Luton',
-    country: 'United Kingdom',
-    currency: 'GBP',
-    symbol: '£',
-    terminals: ['Main Terminal'],
-    terminalDropoffFee: 5.00
+    terminalDropoffFee: 5.00,
+    headlinePrice: 31.62
   },
   {
     code: 'MAN',
@@ -47,7 +30,30 @@ const AIRPORTS = [
     currency: 'GBP',
     symbol: '£',
     terminals: ['Terminal 1', 'Terminal 2', 'Terminal 3'],
-    terminalDropoffFee: 5.00
+    terminalDropoffFee: 5.00,
+    headlinePrice: 33.00
+  },
+  {
+    code: 'STN',
+    name: 'Stansted Airport',
+    city: 'London / Essex',
+    country: 'United Kingdom',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: ['Main Terminal'],
+    terminalDropoffFee: 7.00,
+    headlinePrice: 34.00
+  },
+  {
+    code: 'LTN',
+    name: 'Luton Airport',
+    city: 'London / Luton',
+    country: 'United Kingdom',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: ['Main Terminal'],
+    terminalDropoffFee: 5.00,
+    headlinePrice: 29.90
   },
   {
     code: 'BHX',
@@ -57,37 +63,41 @@ const AIRPORTS = [
     currency: 'GBP',
     symbol: '£',
     terminals: ['Main Terminal'],
-    terminalDropoffFee: 4.00
+    terminalDropoffFee: 4.00,
+    headlinePrice: 32.00
   },
   {
-    code: 'JFK',
-    name: 'John F. Kennedy International Airport',
-    city: 'New York',
-    country: 'United States',
-    currency: 'USD',
-    symbol: '$',
-    terminals: ['Terminal 1', 'Terminal 4', 'Terminal 5', 'Terminal 7', 'Terminal 8'],
-    terminalDropoffFee: 0.00
+    code: 'BRS',
+    name: 'Bristol Airport',
+    city: 'Bristol',
+    country: 'United Kingdom',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: ['Main Terminal'],
+    terminalDropoffFee: 5.00,
+    headlinePrice: 34.00
   },
   {
-    code: 'EWR',
-    name: 'Newark Liberty International Airport',
-    city: 'Newark / New York',
-    country: 'United States',
-    currency: 'USD',
-    symbol: '$',
-    terminals: ['Terminal A', 'Terminal B', 'Terminal C'],
-    terminalDropoffFee: 0.00
+    code: 'LPL',
+    name: 'Liverpool Airport',
+    city: 'Liverpool',
+    country: 'United Kingdom',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: ['Main Terminal'],
+    terminalDropoffFee: 4.00,
+    headlinePrice: 28.00
   },
   {
-    code: 'LAX',
-    name: 'Los Angeles International Airport',
-    city: 'Los Angeles',
-    country: 'United States',
-    currency: 'USD',
-    symbol: '$',
-    terminals: ['Terminal 1', 'Terminal 2', 'Terminal 3', 'Tom Bradley', 'Terminal 5', 'Terminal 6', 'Terminal 7'],
-    terminalDropoffFee: 0.00
+    code: 'SOU',
+    name: 'Southampton Cruise Port',
+    city: 'Southampton',
+    country: 'United Kingdom',
+    currency: 'GBP',
+    symbol: '£',
+    terminals: ['Ocean Cruise Terminal', 'Mayflower Terminal', 'City Cruise Terminal', 'Horizon Terminal'],
+    terminalDropoffFee: 0.00,
+    headlinePrice: 42.00
   }
 ];
 
