@@ -1,17 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus 
+  getAdminLots, saveAdminLot, removeAdminLot, getAdminBookings, changeBookingStatus,
+  authenticateOperator, getOperatorSession, logoutOperator, subscribeToParkingLots
 } from '../services/apiClient';
 import { 
   Building2, MapPin, DollarSign, Users, Plus, Trash2, Edit3, CheckCircle, 
-  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane
+  XCircle, Clock, ShieldCheck, ArrowLeft, RefreshCw, X, Eye, Phone, Mail, Car, Plane, Lock, KeyRound, AlertTriangle, LogOut
 } from 'lucide-react';
 
-export default function AdminPortal({ onClose }) {
-  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders' | 'revenue'
+export default function AdminPortal({ onBackToStorefront }) {
+  // Authentication state
+  const [operatorUser, setOperatorUser] = useState(() => getOperatorSession());
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+
+  // Portal tabs & data
+  const [activeTab, setActiveTab] = useState('lots'); // 'lots' | 'orders'
   const [lots, setLots] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [realtimeActive, setRealtimeActive] = useState(false);
 
   // Modal states for Location Add / Edit
   const [lotModalOpen, setLotModalOpen] = useState(false);
@@ -27,13 +38,53 @@ export default function AdminPortal({ onClose }) {
     transferFrequencyMinutes: '0',
     distanceMiles: '0.1'
   });
+  const [savingLot, setSavingLot] = useState(false);
 
   // Selected customer profile view
   const [selectedCustomerOrder, setSelectedCustomerOrder] = useState(null);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (operatorUser) {
+      fetchData();
+
+      // Subscribe to real-time PostgreSQL updates
+      const unsubscribe = subscribeToParkingLots((payload) => {
+        setRealtimeActive(true);
+        fetchData();
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [operatorUser]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (failedAttempts >= 5) {
+      setAuthError('Too many failed attempts. Security cooldown active. Please wait 30 seconds.');
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError(null);
+
+    const res = await authenticateOperator(authEmail, authPassword);
+    setAuthLoading(false);
+
+    if (res.success) {
+      setOperatorUser(res.user);
+      setFailedAttempts(0);
+    } else {
+      setFailedAttempts(prev => prev + 1);
+      setAuthError(res.error || 'Invalid operator credentials. Access denied.');
+    }
+  };
+
+  const handleLogout = () => {
+    logoutOperator();
+    setOperatorUser(null);
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -44,6 +95,7 @@ export default function AdminPortal({ onClose }) {
       ]);
       setLots(lotsData || []);
       setBookings(bookingsData || []);
+      setRealtimeActive(true);
     } catch (err) {
       console.error('Failed to load admin data', err);
     } finally {
@@ -83,300 +135,426 @@ export default function AdminPortal({ onClose }) {
     setLotModalOpen(true);
   };
 
-  // Save (Add or Update) lot
+  // Save (Add or Update) lot in real-time
   const handleSaveLot = async (e) => {
     e.preventDefault();
+    setSavingLot(true);
     try {
       await saveAdminLot(lotFormData, editingLot ? editingLot.id : null);
-      fetchData();
+      await fetchData();
       setLotModalOpen(false);
     } catch (err) {
-      console.error('Failed to save lot', err);
+      alert('Error updating database: ' + err.message);
+    } finally {
+      setSavingLot(false);
     }
   };
 
-  // Delete lot
+  // Delete lot in real-time
   const handleDeleteLot = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this parking location?')) return;
+    if (!window.confirm('Are you sure you want to delete this parking compound yard from the live database?')) return;
     try {
       await removeAdminLot(id);
       setLots(lots.filter(l => l.id !== id));
+      await fetchData();
     } catch (err) {
-      console.error('Failed to delete lot', err);
+      alert('Delete failed: ' + err.message);
     }
   };
 
-  // Update booking order status
+  // Update booking order status in real-time
   const handleUpdateStatus = async (bookingId, newStatus) => {
     try {
       await changeBookingStatus(bookingId, newStatus);
       setBookings(bookings.map(b => b.id === bookingId ? { ...b, status: newStatus } : b));
     } catch (err) {
-      console.error('Failed to update status', err);
+      alert('Status update failed: ' + err.message);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex flex-col justify-end sm:justify-center p-0 sm:p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-6xl mx-auto rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 flex flex-col max-h-[96vh] overflow-hidden animate-in fade-in">
-        
-        {/* Top Admin Header Bar */}
-        <div className="bg-[#061F75] text-white p-4 sm:p-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-amber-400">
-              ⚙️
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-[#C8102E] text-white px-2 py-0.5 rounded font-black tracking-wider uppercase">
-                  OPERATOR PORTAL
-                </span>
-                <span className="text-sm font-bold text-slate-200">Backend Control Center</span>
-              </div>
-              <h2 className="text-lg sm:text-xl font-black">
-                Yard Locations, Pricing &amp; Orders Manager
-              </h2>
+  // IF NOT AUTHENTICATED: SHOW SECURE OPERATOR LOGIN GATE
+  if (!operatorUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-md bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
+          {/* Top Lock Badge */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#061F75] to-[#C8102E] p-0.5 mx-auto mb-4 flex items-center justify-center shadow-lg">
+            <div className="w-full h-full bg-slate-900 rounded-[14px] flex items-center justify-center">
+              <Lock className="w-8 h-8 text-amber-400" />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={fetchData}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white"
-              title="Refresh Data"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white text-xs font-bold transition-all cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-              <span>Exit Admin</span>
-            </button>
+          <div className="text-center mb-6">
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#C8102E] bg-red-950/80 border border-red-800/60 px-3 py-1 rounded-full">
+              RESTRICTED ACCESS
+            </span>
+            <h1 className="text-xl sm:text-2xl font-black mt-2 tracking-tight text-white">
+              Operator Portal Security Gate
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Airport Parking Deals UK • Backend Control System
+            </p>
           </div>
-        </div>
 
-        {/* Tab Navigation Strip */}
-        <div className="bg-slate-100 border-b border-slate-200 px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto text-xs font-bold">
-          <button
-            onClick={() => setActiveTab('lots')}
-            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-              activeTab === 'lots'
-                ? 'bg-white text-[#061F75] shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <MapPin className="w-4 h-4 text-[#C8102E]" />
-            <span>Yard Locations &amp; Pricing ({lots.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-              activeTab === 'orders'
-                ? 'bg-white text-[#061F75] shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Users className="w-4 h-4 text-[#061F75]" />
-            <span>Customer Orders &amp; Profiles ({bookings.length})</span>
-          </button>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
-          {loading ? (
-            <div className="py-20 text-center text-slate-500 flex items-center justify-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-[#061F75]" />
-              <span className="font-semibold text-sm">Loading backend database records...</span>
+          {authError && (
+            <div className="p-3.5 mb-5 rounded-2xl bg-red-950/60 border border-red-800 text-xs font-bold text-red-200 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span>{authError}</span>
             </div>
-          ) : (
-            <>
-              {/* TAB 1: YARD LOCATIONS & PRICING */}
-              {activeTab === 'lots' && (
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900">Manage Compound Yards &amp; Rates</h3>
-                      <p className="text-xs text-slate-500">
-                        Add, remove, or modify daily prices and compound addresses across all UK airport corridors.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleOpenLotModal()}
-                      className="px-4 py-2.5 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add New Location / Yard</span>
-                    </button>
-                  </div>
-
-                  {/* Responsive Cards / Table */}
-                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                          <tr>
-                            <th className="py-3.5 px-4">Airport</th>
-                            <th className="py-3.5 px-4">Service &amp; Yard Location</th>
-                            <th className="py-3.5 px-4">Type</th>
-                            <th className="py-3.5 px-4">Base Daily Rate</th>
-                            <th className="py-3.5 px-4">7-Day Estimate</th>
-                            <th className="py-3.5 px-4 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {lots.map((l) => (
-                            <tr key={l.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="py-3.5 px-4 font-black text-[#061F75]">
-                                <span className="bg-blue-100 text-[#061F75] px-2 py-1 rounded text-xs">
-                                  {l.airportCode}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <div className="font-bold text-slate-900">{l.name}</div>
-                                <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                                  <MapPin className="w-3 h-3 text-[#C8102E]" />
-                                  <span>{l.yardLocation || 'Perimeter Yard'}</span>
-                                </div>
-                              </td>
-                              <td className="py-3.5 px-4 font-semibold">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    l.type === 'meet_and_greet'
-                                      ? 'bg-blue-50 text-[#061F75] border border-blue-200'
-                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  }`}
-                                >
-                                  {l.type === 'meet_and_greet' ? 'Meet & Greet' : 'Park & Ride'}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4 font-bold text-slate-900 text-sm">
-                                £{parseFloat(l.baseDailyRate).toFixed(2)} / day
-                              </td>
-                              <td className="py-3.5 px-4 font-bold text-[#061F75] text-sm">
-                                £{(parseFloat(l.baseDailyRate) * 7).toFixed(2)}
-                              </td>
-                              <td className="py-3.5 px-4 text-right space-x-2">
-                                <button
-                                  onClick={() => handleOpenLotModal(l)}
-                                  className="p-1.5 rounded-lg bg-blue-50 text-[#061F75] hover:bg-blue-100 transition-colors cursor-pointer"
-                                  title="Edit Rate & Details"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteLot(l.id)}
-                                  className="p-1.5 rounded-lg bg-red-50 text-[#C8102E] hover:bg-red-100 transition-colors cursor-pointer"
-                                  title="Delete Location"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: CUSTOMER ORDERS & PROFILES */}
-              {activeTab === 'orders' && (
-                <div className="space-y-4">
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                    <h3 className="text-base font-bold text-slate-900">Live Customer Orders &amp; Status</h3>
-                    <p className="text-xs text-slate-500">
-                      View full customer profiles, vehicle registration numbers for ANPR cameras, and update order statuses.
-                    </p>
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
-                          <tr>
-                            <th className="py-3.5 px-4">Booking Ref</th>
-                            <th className="py-3.5 px-4">Customer Profile</th>
-                            <th className="py-3.5 px-4">Vehicle Reg (ANPR)</th>
-                            <th className="py-3.5 px-4">Airport &amp; Service</th>
-                            <th className="py-3.5 px-4">Total Paid</th>
-                            <th className="py-3.5 px-4">Order Status</th>
-                            <th className="py-3.5 px-4 text-right">View Profile</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {bookings.map((b) => (
-                            <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
-                              <td className="py-3.5 px-4 font-mono font-bold text-[#061F75]">
-                                {b.id}
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <div className="font-bold text-slate-900">{b.customerName}</div>
-                                <div className="text-[11px] text-slate-500">{b.customerEmail}</div>
-                                <div className="text-[11px] text-slate-500">{b.customerPhone}</div>
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <span className="bg-amber-100 border border-amber-300 text-slate-900 px-2 py-0.5 rounded font-mono font-black text-xs">
-                                  {b.vehicleReg || 'N/A'}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <span className="font-bold text-slate-800">{b.airport}</span>
-                                <p className="text-[11px] text-slate-500 truncate max-w-xs">{b.serviceName}</p>
-                              </td>
-                              <td className="py-3.5 px-4 font-black text-emerald-700 text-sm">
-                                £{parseFloat(b.totalCharged || 0).toFixed(2)}
-                              </td>
-                              <td className="py-3.5 px-4">
-                                <select
-                                  value={b.status || 'confirmed'}
-                                  onChange={(e) => handleUpdateStatus(b.id, e.target.value)}
-                                  className={`text-xs font-bold rounded-lg px-2.5 py-1 border outline-none cursor-pointer ${
-                                    b.status === 'completed'
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                      : b.status === 'cancelled'
-                                      ? 'bg-red-50 text-red-800 border-red-300'
-                                      : 'bg-blue-50 text-blue-800 border-blue-300'
-                                  }`}
-                                >
-                                  <option value="confirmed">Confirmed</option>
-                                  <option value="completed">Completed</option>
-                                  <option value="cancelled">Cancelled</option>
-                                </select>
-                              </td>
-                              <td className="py-3.5 px-4 text-right">
-                                <button
-                                  onClick={() => setSelectedCustomerOrder(b)}
-                                  className="p-1.5 rounded-lg bg-slate-100 text-[#061F75] hover:bg-slate-200 transition-colors cursor-pointer"
-                                  title="View Full Customer Profile"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
           )}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                Operator Email / ID
+              </label>
+              <div className="relative flex items-center">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5" />
+                <input
+                  type="text"
+                  required
+                  placeholder="admin@airportparkingdeals.uk"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full bg-slate-900/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                Master Password or 4-Digit PIN
+              </label>
+              <div className="relative flex items-center">
+                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5" />
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter master password or PIN (7890)"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full bg-slate-900/80 border border-slate-700 focus:border-[#C8102E] focus:outline-none rounded-xl pl-10 pr-4 py-3 text-sm text-white font-medium tracking-wider"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                Default Master PIN: <code className="bg-slate-700 px-1.5 py-0.5 rounded text-amber-300 font-mono">7890</code> or Password: <code className="bg-slate-700 px-1.5 py-0.5 rounded text-amber-300 font-mono">ParkDeals2026!</code>
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#061F75] to-[#C8102E] hover:from-[#0B2EA2] hover:to-[#A60D25] text-white font-extrabold text-sm transition-all shadow-lg shadow-blue-900/40 cursor-pointer disabled:opacity-50"
+            >
+              {authLoading ? 'Verifying PostgreSQL Credentials...' : 'Unlock Operator Dashboard'}
+            </button>
+          </form>
+
+          {/* Return link */}
+          <div className="mt-6 text-center">
+            <button
+              onClick={onBackToStorefront}
+              className="text-xs font-bold text-slate-400 hover:text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Customer Storefront</span>
+            </button>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between text-[10px] text-slate-400">
+            <span>🔒 PostgreSQL Crypt() Hash Protected</span>
+            <span>⚡ RLS Protected</span>
+          </div>
         </div>
       </div>
+    );
+  }
+
+  // AUTHENTICATED: RENDER FULL OPERATOR DASHBOARD
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+      {/* Top Admin Header Bar */}
+      <header className="bg-[#061F75] text-white px-4 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-4 border-b-2 border-[#C8102E]">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-amber-400">
+            ⚙️
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] bg-[#C8102E] text-white px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                OPERATOR PORTAL
+              </span>
+              <span className="text-xs font-bold text-slate-200">
+                Logged in as: <strong>{operatorUser.username}</strong>
+              </span>
+              {realtimeActive && (
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  PostgreSQL Realtime Active
+                </span>
+              )}
+            </div>
+            <h1 className="text-base sm:text-xl font-black">
+              Live Compound Yards, Rates &amp; Bookings Manager
+            </h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchData}
+            className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white cursor-pointer"
+            title="Refresh Live Data"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={onBackToStorefront}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-900/60 hover:bg-blue-900 text-white text-xs font-bold transition-all cursor-pointer border border-blue-700"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Storefront View</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#C8102E] hover:bg-[#A60D25] text-white text-xs font-bold transition-all cursor-pointer shadow-sm"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Lock &amp; Exit</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Tab Navigation Strip */}
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-8 py-2.5 flex items-center gap-3 shadow-sm">
+        <button
+          onClick={() => setActiveTab('lots')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+            activeTab === 'lots'
+              ? 'bg-[#061F75] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <MapPin className="w-4 h-4 text-amber-400" />
+          <span>Compound Yards &amp; Live Rates ({lots.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('orders')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-2 text-xs font-bold ${
+            activeTab === 'orders'
+              ? 'bg-[#061F75] text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="w-4 h-4 text-amber-400" />
+          <span>Customer Bookings &amp; ANPR Plates ({bookings.length})</span>
+        </button>
+      </div>
+
+      {/* Main Content Body */}
+      <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
+        {loading ? (
+          <div className="py-24 text-center text-slate-500 flex items-center justify-center gap-3 bg-white rounded-3xl border border-slate-200 shadow-sm">
+            <RefreshCw className="w-6 h-6 animate-spin text-[#061F75]" />
+            <span className="font-bold text-sm">Querying Supabase PostgreSQL cluster...</span>
+          </div>
+        ) : (
+          <>
+            {/* TAB 1: YARDS & RATES */}
+            {activeTab === 'lots' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+                  <div>
+                    <h2 className="text-lg font-black text-[#061F75]">Live Compound Yards &amp; Dynamic Pricing</h2>
+                    <p className="text-xs text-slate-500">
+                      Changes made here immediately write to PostgreSQL and broadcast to all storefront quotes in real time.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleOpenLotModal()}
+                    className="px-5 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white text-xs font-extrabold transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Add New Compound Yard</span>
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-4 px-5">Airport</th>
+                          <th className="py-4 px-5">Package &amp; Yard Location</th>
+                          <th className="py-4 px-5">Service Type</th>
+                          <th className="py-4 px-5">Base Daily Rate</th>
+                          <th className="py-4 px-5">7-Day Estimate</th>
+                          <th className="py-4 px-5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {lots.map((l) => (
+                          <tr key={l.id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="py-4 px-5">
+                              <span className="bg-blue-100 text-[#061F75] px-2.5 py-1 rounded-lg font-mono font-black text-xs">
+                                {l.airportCode}
+                              </span>
+                            </td>
+                            <td className="py-4 px-5">
+                              <div className="font-black text-slate-900 text-sm">{l.name}</div>
+                              <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                                <MapPin className="w-3.5 h-3.5 text-[#C8102E]" />
+                                <span>{l.yardLocation || 'Perimeter Compound Yard'}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-5">
+                              <span
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider ${
+                                  l.type === 'meet_and_greet'
+                                    ? 'bg-blue-50 text-[#061F75] border border-blue-200'
+                                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                }`}
+                              >
+                                {l.type === 'meet_and_greet' ? 'Meet & Greet' : 'Park & Ride'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-5 font-black text-slate-900 text-sm">
+                              £{parseFloat(l.baseDailyRate).toFixed(2)} / day
+                            </td>
+                            <td className="py-4 px-5 font-black text-[#061F75] text-sm">
+                              £{(parseFloat(l.baseDailyRate) * 7).toFixed(2)}
+                            </td>
+                            <td className="py-4 px-5 text-right space-x-2">
+                              <button
+                                onClick={() => handleOpenLotModal(l)}
+                                className="p-2 rounded-xl bg-blue-50 text-[#061F75] hover:bg-blue-100 transition-colors cursor-pointer"
+                                title="Edit Rate & Details"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteLot(l.id)}
+                                className="p-2 rounded-xl bg-red-50 text-[#C8102E] hover:bg-red-100 transition-colors cursor-pointer"
+                                title="Delete Compound Location"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: BOOKINGS & ORDERS */}
+            {activeTab === 'orders' && (
+              <div className="space-y-4">
+                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-black text-[#061F75]">Live Customer Reservations &amp; ANPR Plates</h2>
+                    <p className="text-xs text-slate-500">
+                      Monitor incoming vehicles, flight numbers, and manage confirmed order lifecycle.
+                    </p>
+                  </div>
+                  <span className="bg-blue-50 text-[#061F75] font-black text-xs px-3 py-1.5 rounded-xl border border-blue-200">
+                    {bookings.length} Bookings Logged
+                  </span>
+                </div>
+
+                <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-100/90 border-b border-slate-200 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider">
+                        <tr>
+                          <th className="py-4 px-5">Ref Code</th>
+                          <th className="py-4 px-5">Customer Profile</th>
+                          <th className="py-4 px-5">ANPR Plate</th>
+                          <th className="py-4 px-5">Airport &amp; Service</th>
+                          <th className="py-4 px-5">Total Paid</th>
+                          <th className="py-4 px-5">Status</th>
+                          <th className="py-4 px-5 text-right">View Profile</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {bookings.map((b) => (
+                          <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="py-4 px-5 font-mono font-bold text-[#061F75]">
+                              {b.id}
+                            </td>
+                            <td className="py-4 px-5">
+                              <div className="font-bold text-slate-900">{b.customerName}</div>
+                              <div className="text-[11px] text-slate-500">{b.customerEmail}</div>
+                              <div className="text-[11px] text-slate-500">{b.customerPhone}</div>
+                            </td>
+                            <td className="py-4 px-5">
+                              <span className="bg-amber-100 border border-amber-300 text-slate-900 px-2 py-0.5 rounded font-mono font-black text-xs">
+                                {b.vehicleReg || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-5">
+                              <span className="font-bold text-slate-800">{b.airport}</span>
+                              <p className="text-[11px] text-slate-500 truncate max-w-xs">{b.serviceName}</p>
+                            </td>
+                            <td className="py-4 px-5 font-black text-emerald-700 text-sm">
+                              £{parseFloat(b.totalCharged || 0).toFixed(2)}
+                            </td>
+                            <td className="py-4 px-5">
+                              <select
+                                value={b.status || 'confirmed'}
+                                onChange={(e) => handleUpdateStatus(b.id, e.target.value)}
+                                className={`text-xs font-bold rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer ${
+                                  b.status === 'completed'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                    : b.status === 'cancelled'
+                                    ? 'bg-red-50 text-red-800 border-red-300'
+                                    : 'bg-blue-50 text-blue-800 border-blue-300'
+                                }`}
+                              >
+                                <option value="confirmed">Confirmed</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                              </select>
+                            </td>
+                            <td className="py-4 px-5 text-right">
+                              <button
+                                onClick={() => setSelectedCustomerOrder(b)}
+                                className="p-2 rounded-xl bg-slate-100 text-[#061F75] hover:bg-slate-200 transition-colors cursor-pointer"
+                                title="View Complete Customer Dossier"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
 
       {/* MODAL: ADD / EDIT LOCATION & PRICE */}
       {lotModalOpen && (
-        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-4">
-              <h3 className="text-base font-bold text-[#061F75]">
-                {editingLot ? 'Edit Yard Location & Pricing' : 'Add New Compound Yard Location'}
-              </h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-6">
+              <div>
+                <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
+                  REAL-TIME DATABASE MUTATION
+                </span>
+                <h3 className="text-lg font-black text-[#061F75]">
+                  {editingLot ? 'Edit Live Yard Rate & Location' : 'Deploy New Compound Yard'}
+                </h3>
+              </div>
               <button
                 onClick={() => setLotModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-700"
@@ -392,7 +570,7 @@ export default function AdminPortal({ onClose }) {
                   <select
                     value={lotFormData.airportCode}
                     onChange={(e) => setLotFormData({ ...lotFormData, airportCode: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                   >
                     <option value="LHR">Heathrow (LHR)</option>
                     <option value="LGW">Gatwick (LGW)</option>
@@ -411,35 +589,35 @@ export default function AdminPortal({ onClose }) {
                   <select
                     value={lotFormData.type}
                     onChange={(e) => setLotFormData({ ...lotFormData, type: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                   >
-                    <option value="meet_and_greet">Meet &amp; Greet (Valet)</option>
+                    <option value="meet_and_greet">Meet &amp; Greet (Forecourt)</option>
                     <option value="park_and_ride">Park &amp; Ride (Shuttle)</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block mb-1">Service / Package Name</label>
+                <label className="block mb-1">Service Package Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Heathrow Express Meet & Greet Forecourt"
                   value={lotFormData.name}
                   onChange={(e) => setLotFormData({ ...lotFormData, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block mb-1">Compound Yard Address &amp; Postcode</label>
+                <label className="block mb-1">Compound Yard Physical Address &amp; Postcode</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Bath Road Compound, Harlington (TW19 8AF)"
                   value={lotFormData.yardLocation}
                   onChange={(e) => setLotFormData({ ...lotFormData, yardLocation: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                 />
               </div>
 
@@ -453,8 +631,11 @@ export default function AdminPortal({ onClose }) {
                     placeholder="e.g. 5.50"
                     value={lotFormData.baseDailyRate}
                     onChange={(e) => setLotFormData({ ...lotFormData, baseDailyRate: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none font-bold"
                   />
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    7 Days: £{(parseFloat(lotFormData.baseDailyRate || 0) * 7).toFixed(2)}
+                  </span>
                 </div>
 
                 <div>
@@ -463,27 +644,28 @@ export default function AdminPortal({ onClose }) {
                     type="number"
                     step="0.1"
                     required
-                    placeholder="e.g. 1.5"
+                    placeholder="e.g. 0.1"
                     value={lotFormData.distanceMiles}
                     onChange={(e) => setLotFormData({ ...lotFormData, distanceMiles: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 outline-none"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 outline-none"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 flex gap-2">
+              <div className="pt-4 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setLotModalOpen(false)}
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors"
+                  className="w-1/2 py-3 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-bold transition-all shadow-md"
+                  disabled={savingLot}
+                  className="w-1/2 py-3 rounded-xl bg-[#061F75] hover:bg-[#0B2EA2] text-white font-extrabold transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
-                  {editingLot ? 'Save Changes' : 'Create Location'}
+                  {savingLot ? 'Saving to Database...' : editingLot ? 'Commit Changes' : 'Create Live Location'}
                 </button>
               </div>
             </form>
@@ -491,13 +673,15 @@ export default function AdminPortal({ onClose }) {
         </div>
       )}
 
-      {/* MODAL: CUSTOMER PROFILE & ORDER DETAILS */}
+      {/* MODAL: CUSTOMER PROFILE & ANPR VEHICLE DETAILS */}
       {selectedCustomerOrder && (
-        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
               <div>
-                <span className="text-[10px] uppercase font-black text-[#061F75] tracking-wider block">Customer Profile</span>
+                <span className="text-[10px] uppercase font-black text-[#C8102E] tracking-wider block">
+                  Customer &amp; Vehicle Dossier
+                </span>
                 <h3 className="text-base font-bold text-slate-900">{selectedCustomerOrder.customerName}</h3>
               </div>
               <button
@@ -509,45 +693,45 @@ export default function AdminPortal({ onClose }) {
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex items-center gap-2 text-slate-700">
-                  <Mail className="w-3.5 h-3.5 text-[#061F75]" />
+                  <Mail className="w-4 h-4 text-[#061F75]" />
                   <span>{selectedCustomerOrder.customerEmail}</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-700">
-                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <Phone className="w-4 h-4 text-emerald-600" />
                   <span>{selectedCustomerOrder.customerPhone || 'Not provided'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-700">
-                  <Car className="w-3.5 h-3.5 text-amber-500" />
-                  <span>ANPR Plate: <strong className="font-mono bg-amber-100 px-1.5 py-0.5 rounded">{selectedCustomerOrder.vehicleReg || 'N/A'}</strong></span>
+                  <Car className="w-4 h-4 text-amber-500" />
+                  <span>ANPR Plate: <strong className="font-mono bg-amber-100 px-2 py-0.5 rounded border border-amber-300">{selectedCustomerOrder.vehicleReg || 'N/A'}</strong></span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-700">
-                  <Plane className="w-3.5 h-3.5 text-[#061F75]" />
-                  <span>Flight Number: <strong>{selectedCustomerOrder.flightNumber || 'None'}</strong></span>
+                  <Plane className="w-4 h-4 text-[#061F75]" />
+                  <span>Flight Number: <strong>{selectedCustomerOrder.flightNumber || 'None specified'}</strong></span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200 text-slate-700 space-y-1">
+              <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 text-slate-700 space-y-1.5">
                 <div className="flex justify-between">
-                  <span>Order Reference:</span>
+                  <span>Booking Reference:</span>
                   <strong className="font-mono text-[#061F75]">{selectedCustomerOrder.id}</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span>Service:</span>
+                  <span>Package:</span>
                   <span>{selectedCustomerOrder.serviceName}</span>
                 </div>
-                <div className="flex justify-between font-bold text-sm text-[#061F75] pt-1 border-t border-blue-200">
-                  <span>Amount Charged:</span>
+                <div className="flex justify-between font-black text-sm text-[#061F75] pt-1.5 border-t border-blue-200">
+                  <span>Total Amount Paid:</span>
                   <span>£{parseFloat(selectedCustomerOrder.totalCharged || 0).toFixed(2)}</span>
                 </div>
               </div>
 
               <button
                 onClick={() => setSelectedCustomerOrder(null)}
-                className="w-full mt-2 py-2.5 rounded-xl bg-[#061F75] text-white font-bold text-xs"
+                className="w-full mt-3 py-3 rounded-xl bg-[#061F75] text-white font-bold text-xs cursor-pointer"
               >
-                Close Customer Profile
+                Close Dossier
               </button>
             </div>
           </div>

@@ -6,7 +6,7 @@ import BookingModal from './components/BookingModal';
 import VoucherModal from './components/VoucherModal';
 import AdminPortal from './components/AdminPortal';
 import FaqSection from './components/FaqSection';
-import { searchParkingLots, findBookingByRef } from './services/apiClient';
+import { searchParkingLots, findBookingByRef, subscribeToParkingLots } from './services/apiClient';
 import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag } from 'lucide-react';
 
 export default function App() {
@@ -14,7 +14,9 @@ export default function App() {
   const [parkingLots, setParkingLots] = useState([]);
   const [loadingParking, setLoadingParking] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [isAdminRoute, setIsAdminRoute] = useState(() => {
+    return window.location.hash === '#/admin' || window.location.search.includes('admin=true');
+  });
   const [searchParams, setSearchParams] = useState({
     airport: 'LHR',
     fromDate: '2026-11-07',
@@ -36,7 +38,25 @@ export default function App() {
   const [lookupError, setLookupError] = useState(null);
 
   useEffect(() => {
+    const handleHashChange = () => {
+      setIsAdminRoute(window.location.hash === '#/admin' || window.location.search.includes('admin=true'));
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
     fetchParkingLots(searchParams);
+
+    // Real-time synchronization: listen for any live database mutations
+    const unsubscribe = subscribeToParkingLots(() => {
+      console.log('⚡ Storefront received live PostgreSQL update: refreshing deals...');
+      fetchParkingLots(searchParams);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const fetchParkingLots = async (params) => {
@@ -93,12 +113,24 @@ export default function App() {
     }
   };
 
+  // If navigating to separate admin URL, render dedicated secure operator portal
+  if (isAdminRoute) {
+    return (
+      <AdminPortal
+        onBackToStorefront={() => {
+          window.location.hash = '';
+          setIsAdminRoute(false);
+          fetchParkingLots(searchParams);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-[#C8102E] selection:text-white">
       {/* Top Navbar */}
       <Navbar
         onOpenLookup={() => setLookupOpen(true)}
-        onOpenAdmin={() => setAdminOpen(true)}
         onAirportQuickSelect={handleQuickAirportSelect}
         selectedAirport={selectedAirport}
       />
@@ -236,16 +268,6 @@ export default function App() {
         <VoucherModal
           booking={voucherData}
           onClose={() => setVoucherData(null)}
-        />
-      )}
-
-      {/* Operator Admin Management Portal */}
-      {adminOpen && (
-        <AdminPortal
-          onClose={() => {
-            setAdminOpen(false);
-            fetchParkingLots(searchParams);
-          }}
         />
       )}
 
