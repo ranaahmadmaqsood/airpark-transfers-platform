@@ -9,6 +9,12 @@ import FaqSection from './components/FaqSection';
 import { searchParkingLots, findBookingByRef, subscribeToParkingLots } from './services/apiClient';
 import { Plane, Shield, Award, CheckCircle, RefreshCw, Star, Phone, Mail, MapPin, Tag, AlertCircle } from 'lucide-react';
 
+function getFutureDate(daysAhead) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  return d.toISOString().split('T')[0];
+}
+
 export default function App() {
   const [selectedAirport, setSelectedAirport] = useState('LHR');
   const [parkingLots, setParkingLots] = useState([]);
@@ -19,9 +25,9 @@ export default function App() {
   });
   const [searchParams, setSearchParams] = useState({
     airport: 'LHR',
-    fromDate: '2026-11-07',
+    fromDate: getFutureDate(7),
     fromTime: '10:00',
-    toDate: '2026-11-14',
+    toDate: getFutureDate(14),
     toTime: '12:00',
     promoCode: '',
     type: 'all',

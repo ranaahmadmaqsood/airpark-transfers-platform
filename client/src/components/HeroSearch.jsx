@@ -2,11 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { getAirports } from '../services/apiClient';
 import { Plane, Calendar, Clock, Tag, Search, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
+function getFutureDate(daysAhead) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  return d.toISOString().split('T')[0];
+}
+
 export default function HeroSearch({ onSearch, selectedAirport, setSelectedAirport }) {
   const [airports, setAirports] = useState([]);
-  const [fromDate, setFromDate] = useState('2026-11-07');
+  const [fromDate, setFromDate] = useState(() => getFutureDate(7));
   const [fromTime, setFromTime] = useState('10:00');
-  const [toDate, setToDate] = useState('2026-11-14');
+  const [toDate, setToDate] = useState(() => getFutureDate(14));
   const [toTime, setToTime] = useState('12:00');
   const [promoCode, setPromoCode] = useState('');
   const [parkingType, setParkingType] = useState('all');
